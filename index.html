@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  Omni-Animaux — © 2026 Ferrus Dantioch
+  Omni-Animalia — © 2026 Ferrus Dantioch
   Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
   https://creativecommons.org/licenses/by-nc-nd/4.0/
 -->
@@ -8,8 +8,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Omni-Animaux</title>
-<meta name="description" content="Omni-Animaux — carnet de santé de tes animaux de compagnie : poids, vaccins, vermifuges, traitements, rendez-vous et rappels. Fonctionne hors ligne, sans compte.">
+<title>Omni-Animalia</title>
+<meta name="description" content="Omni-Animalia — carnet de santé de tes animaux de compagnie : poids, vaccins, vermifuges, traitements, rendez-vous et rappels. Fonctionne hors ligne, sans compte.">
 <meta name="theme-color" content="#14111d">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="./manifest.json">
@@ -65,12 +65,12 @@
 <!-- ============ Écran de chargement (remplacé dès que tout est prêt) ============ -->
 <div id="chargement" class="ecran-plein">
   <p>Chargement…</p>
-  <noscript><p>Omni-Animaux a besoin de JavaScript pour fonctionner. Active-le dans les réglages du navigateur.</p></noscript>
+  <noscript><p>Omni-Animalia a besoin de JavaScript pour fonctionner. Active-le dans les réglages du navigateur.</p></noscript>
 </div>
 
 <!-- ============ Problème grave (base de données inaccessible…) ============ -->
 <div id="erreur-fatale" class="ecran-plein" role="alert" hidden>
-  <h1>Omni-Animaux ne peut pas démarrer</h1>
+  <h1>Omni-Animalia ne peut pas démarrer</h1>
   <p id="erreur-fatale-texte"></p>
   <p>Tes données déjà enregistrées ne sont pas effacées pour autant.</p>
   <button type="button" class="bouton principal" id="erreur-recharger">Réessayer</button>
@@ -79,7 +79,7 @@
 <!-- ============ Écran de verrouillage (si un mot de passe est réglé) ============ -->
 <div id="verrou" class="ecran-plein" hidden>
   <form id="verrou-form" class="verrou-boite" novalidate>
-    <h1 tabindex="-1">Omni-Animaux est verrouillée</h1>
+    <h1 tabindex="-1">Omni-Animalia est verrouillée</h1>
     <label for="verrou-mdp">Mot de passe</label>
     <input type="password" id="verrou-mdp" autocomplete="current-password" aria-describedby="verrou-erreur">
     <p id="verrou-erreur" class="message-erreur" hidden></p>
@@ -96,7 +96,7 @@
 
 <!-- ============ Bandeau « nouvelle version » ============ -->
 <div id="bandeau-mise-a-jour" class="bandeau" role="region" aria-label="Nouvelle version" hidden>
-  <p>Une nouvelle version d’Omni-Animaux est disponible.</p>
+  <p>Une nouvelle version d’Omni-Animalia est disponible.</p>
   <div class="rangee-boutons">
     <button type="button" class="bouton principal" id="maj-oui">Mettre à jour</button>
     <button type="button" class="bouton secondaire" id="maj-plus-tard">Plus tard</button>
@@ -108,7 +108,7 @@
   <!-- ===== Accueil : la liste des animaux ===== -->
   <section class="vue" data-vue="accueil" hidden>
     <header class="entete">
-      <h1 tabindex="-1"><span class="marque">Omni<span>-Animaux</span></span></h1>
+      <h1 tabindex="-1"><span class="marque">Omni<span>-Animalia</span></span></h1>
     </header>
     <div id="accueil-bandeaux"></div>
     <div id="accueil-liste" class="liste-cartes"></div>
@@ -152,7 +152,7 @@
       <h1 tabindex="-1">Rappels</h1>
     </header>
     <p class="discret">Calculés à l’ouverture de l’application, pour tous tes animaux.
-       Ouvre Omni-Animaux régulièrement : elle ne te préviendra pas d’elle-même.
+       Ouvre Omni-Animalia régulièrement : elle ne te préviendra pas d’elle-même.
        Pour être prévenu à l’heure, ajoute les rappels à Google Agenda.</p>
     <div id="rappels-liste"></div>
   </section>
@@ -184,7 +184,7 @@
     </header>
 
     <div class="bloc">
-      <p><span class="marque">Omni<span>-Animaux</span></span></p>
+      <p><span class="marque">Omni<span>-Animalia</span></span></p>
       <p class="mono" id="numero-version">Version</p>
       <p>Le carnet de santé de tes animaux de compagnie : identité, poids, vaccins,
          vermifuges, traitements, rendez-vous, notes et choses à faire.
@@ -209,12 +209,12 @@
     <div class="bloc">
       <p class="etiquette">Rappels et notifications</p>
       <p>Les rappels (vaccins, vermifuges, rendez-vous, tâches) sont calculés et affichés
-         <strong>quand tu ouvres l’application</strong>. Omni-Animaux n’envoie pas de
+         <strong>quand tu ouvres l’application</strong>. Omni-Animalia n’envoie pas de
          notification : une application qui fonctionne hors ligne, sans serveur, ne peut pas
          garantir qu’une notification arrive à l’heure.</p>
       <p>Pour être prévenu à temps, utilise les boutons <strong>« Ajouter à Google Agenda »</strong>
          (page Rappels et rendez-vous, connexion internet nécessaire) : c’est alors ton agenda qui t’avertit,
-         même quand Omni-Animaux est fermée.</p>
+         même quand Omni-Animalia est fermée.</p>
     </div>
 
     <!-- Mention de l'auteur : uniquement le pseudonyme, jamais le vrai nom.
@@ -241,7 +241,7 @@
       <p>Distribuée sous licence
          <a href="https://creativecommons.org/licenses/by-nc-nd/4.0/deed.fr" target="_blank" rel="noopener noreferrer">Creative Commons BY-NC-ND 4.0</a>
          (Attribution - Utilisation non commerciale - Pas d’œuvre dérivée).</p>
-      <p>Tu peux utiliser Omni-Animaux et en partager des copies identiques, gratuitement,
+      <p>Tu peux utiliser Omni-Animalia et en partager des copies identiques, gratuitement,
          à condition de citer l’auteur (Ferrus Dantioch) et d’indiquer la licence. Il est
          interdit de la vendre ou d’en tirer un profit commercial, et de diffuser une version
          modifiée. Le logiciel est fourni « en l’état », sans aucune garantie.</p>

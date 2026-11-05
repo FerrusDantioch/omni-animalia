@@ -1,4 +1,4 @@
-# Omni-Animaux
+# Omni-Animalia
 
 **Le carnet de santé de vos animaux de compagnie**, sous forme d'application web
 installable (PWA) : identité, poids (avec courbe), vaccins, vermifuges et
@@ -97,7 +97,7 @@ code tapé dans les champs, et l'arrivée d'une nouvelle version.
 1. Ouvrez l'adresse ci-dessus dans **Chrome**.
 2. Touchez le menu **⋮** (en haut à droite) → **Ajouter à l'écran d'accueil**
    (ou **Installer l'application**), puis **Installer**.
-3. Ouvrez Omni-Animaux depuis son icône (une patte dans un anneau violet).
+3. Ouvrez Omni-Animalia depuis son icône (une patte dans un anneau violet).
    Elle fonctionne désormais même sans internet.
 
 ---

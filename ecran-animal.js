@@ -1,4 +1,4 @@
-/* Omni-Animaux — © 2026 Ferrus Dantioch
+/* Omni-Animalia — © 2026 Ferrus Dantioch
    Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
@@ -358,7 +358,7 @@ const EcranAnimal = {
         el('div', {},
           el('p', { class: 'carnet-sur-titre', text: 'Carnet de santé' }),
           el('h1', { text: a.nom }),
-          el('p', { text: 'Édité le ' + Dates.fr(Dates.aujourdhui()) + ' avec Omni-Animaux' })),
+          el('p', { text: 'Édité le ' + Dates.fr(Dates.aujourdhui()) + ' avec Omni-Animalia' })),
         photo),
       section('Identité', el('div', { class: 'carnet-identite' },
         this.ligne('Espèce', a.espece), this.ligne('Race', a.race), this.ligne('Sexe', NOMS_SEXE[a.sexe]),
@@ -382,7 +382,7 @@ const EcranAnimal = {
       section('Notes de santé', tableau(['Date', 'Type', 'Note'],
         notes.sort(parDate('date')).map((n) => [Dates.fr(n.date), EcranSante.NOMS_NOTES[n.categorie] || '',
           (n.texte || '') + (n.pieces && n.pieces.length ? ' [' + n.pieces.length + ' document(s) joint(s) dans l’application]' : '')]))),
-      el('footer', { class: 'carnet-pied', text: 'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire. — Omni-Animaux, © 2026 Ferrus Dantioch' })
+      el('footer', { class: 'carnet-pied', text: 'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire. — Omni-Animalia, © 2026 Ferrus Dantioch' })
     );
 
     Impression.lancer('Carnet de santé - ' + a.nom);
