@@ -19,7 +19,7 @@ const ADRESSE_CONTACT = 'omni-systeme.choking513@passmail.net';
 
 /* Numéro de version affiché dans « À propos ».
    ⚠️ À changer en même temps que CACHE dans sw.js. */
-const VERSION = '1.2.3';
+const VERSION = '1.2.4';
 
 
 /* ---------- 1. Le thème ---------- */

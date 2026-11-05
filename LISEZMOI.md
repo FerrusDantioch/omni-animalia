@@ -17,7 +17,7 @@ l'agenda du téléphone.
 > d'un vétérinaire.
 
 Application de l'Omni-système, développée par **Ferrus Dantioch** avec l'aide de
-Claude (Anthropic). Portfolio : https://ferrusdantioch.github.io/omni-systeme/
+l'intelligence artificielle. Portfolio : https://ferrusdantioch.github.io/omni-systeme/
 
 ---
 
