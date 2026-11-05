@@ -1,4 +1,4 @@
-/* Omni-Animaux — © 2026 Ferrus Dantioch
+/* Omni-Animalia — © 2026 Ferrus Dantioch
    Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
@@ -12,7 +12,7 @@
    2. Agenda : ouvre Google Agenda avec l'événement déjà rempli (un
       rappel, un rendez-vous), ou fabrique un « fichier d'agenda » (.ics)
       avec TOUS les rappels, à importer depuis un ordinateur. C'est alors
-      l'AGENDA qui prévient à l'heure : Omni-Animaux, elle, ne peut pas
+      l'AGENDA qui prévient à l'heure : Omni-Animalia, elle, ne peut pas
       envoyer de notification.
 
    ⚠️ Chrome sur Android ne laisse passer dans le menu « Partager » que
@@ -63,7 +63,7 @@ const Partage = {
      « Rappel : Rage (Biscuit) » → « rappel-rage-biscuit » */
   nomFichier(texte) {
     return String(texte).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'omni-animaux';
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'omni-animalia';
   }
 };
 
@@ -76,7 +76,7 @@ const Agenda = {
     return {
       uid: r.id + '-' + r.date,
       titre: r.animalNom + ' : ' + r.titre,
-      description: 'Ajouté depuis Omni-Animaux.',
+      description: 'Ajouté depuis Omni-Animalia.',
       lieu: lieu || '',
       date: r.date,
       heure: r.type === 'rdv' ? (r.heure || '') : ''
@@ -125,7 +125,7 @@ const Agenda = {
   /* Fabrique le texte du fichier .ics pour une liste d'événements */
   ics(evenements) {
     const maintenant = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const lignes = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Omni-Animaux//FR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+    const lignes = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Omni-Animalia//FR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
     for (const ev of evenements) {
       lignes.push('BEGIN:VEVENT', 'UID:' + ev.uid + '@omni-animalia', 'DTSTAMP:' + maintenant);
       if (ev.heure) {
@@ -178,7 +178,7 @@ const Agenda = {
       message: [
         '« ' + ev.titre + ' », ' + (ev.heure ? Dates.frHeure(ev.date, ev.heure) : 'le ' + Dates.fr(ev.date)) + '.',
         'Google Agenda va s’ouvrir avec l’événement déjà rempli. Vérifie-le, puis touche « Enregistrer ».',
-        'Ton agenda pourra ensuite te prévenir, même quand Omni-Animaux est fermée (avec les notifications réglées dans Google Agenda).'
+        'Ton agenda pourra ensuite te prévenir, même quand Omni-Animalia est fermée (avec les notifications réglées dans Google Agenda).'
       ],
       oui: 'Ouvrir Google Agenda'
     });

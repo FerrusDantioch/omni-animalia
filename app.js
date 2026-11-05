@@ -1,4 +1,4 @@
-/* Omni-Animaux — © 2026 Ferrus Dantioch
+/* Omni-Animalia — © 2026 Ferrus Dantioch
    Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
@@ -19,7 +19,7 @@ const ADRESSE_CONTACT = 'omni-systeme.choking513@passmail.net';
 
 /* Numéro de version affiché dans « À propos ».
    ⚠️ À changer en même temps que CACHE dans sw.js. */
-const VERSION = '1.2.2';
+const VERSION = '1.2.3';
 
 
 /* ---------- 1. Le thème ---------- */
@@ -352,7 +352,7 @@ const App = {
       contact.append(
         el('p', {}, 'Une idée, une gêne, quelque chose qui manque ? Tes retours sont les bienvenus. Écris à : ',
           el('span', { class: 'adresse-mail', text: ADRESSE_CONTACT })),
-        el('a', { class: 'bouton principal large', href: 'mailto:' + ADRESSE_CONTACT + '?subject=' + encodeURIComponent('Retour sur Omni-Animaux'), text: 'Envoyer un retour par e-mail' }),
+        el('a', { class: 'bouton principal large', href: 'mailto:' + ADRESSE_CONTACT + '?subject=' + encodeURIComponent('Retour sur Omni-Animalia'), text: 'Envoyer un retour par e-mail' }),
         bouton('Copier l’adresse', () => UI.copier(ADRESSE_CONTACT), { classe: 'secondaire large', icone: 'copier', id: 'copier-contact' })
       );
     } else {
@@ -401,7 +401,7 @@ const App = {
     // Première ouverture : avertissement et explication sur les données
     if (!(await BD.reglage('avertissementVu', false))) {
       await UI.informer({
-        titre: 'Bienvenue dans Omni-Animaux',
+        titre: 'Bienvenue dans Omni-Animalia',
         message: [
           'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire.',
           'Tes données restent uniquement sur cet appareil : rien n’est envoyé sur internet. Pense à faire des sauvegardes régulières (Réglages → Sauvegarder) pour ne pas les perdre.',

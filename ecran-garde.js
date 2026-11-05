@@ -1,4 +1,4 @@
-/* Omni-Animaux — © 2026 Ferrus Dantioch
+/* Omni-Animalia — © 2026 Ferrus Dantioch
    Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
@@ -89,7 +89,7 @@ const EcranGarde = {
         ligne('Tatouage', a.tatouage),
         ligne('Couleur, signes distinctifs', a.couleur)),
 
-      el('p', { class: 'garde-pied', text: 'Fiche éditée le ' + Dates.fr(Dates.aujourdhui()) + ' avec Omni-Animaux. Cette application sert à organiser les informations. Elle ne remplace pas l’avis d’un vétérinaire.' })
+      el('p', { class: 'garde-pied', text: 'Fiche éditée le ' + Dates.fr(Dates.aujourdhui()) + ' avec Omni-Animalia. Cette application sert à organiser les informations. Elle ne remplace pas l’avis d’un vétérinaire.' })
     );
   },
 

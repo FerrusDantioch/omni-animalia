@@ -1,4 +1,4 @@
-/* Omni-Animaux — © 2026 Ferrus Dantioch
+/* Omni-Animalia — © 2026 Ferrus Dantioch
    Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
@@ -27,7 +27,7 @@ const Sauvegarde = {
     return {
       format: this.FORMAT,
       versionFormat: this.VERSION_FORMAT,
-      application: 'Omni-Animaux ' + VERSION,
+      application: 'Omni-Animalia ' + VERSION,
       exporteLe: new Date().toISOString(),
       reglages: {
         theme: await BD.reglage('theme', 'omni'),
@@ -45,7 +45,7 @@ const Sauvegarde = {
      contenu est exactement le même, et « Restaurer » accepte les deux. */
   async fichier(pourPartage) {
     const contenu = await this.preparer();
-    const nom = 'omni-animaux-sauvegarde-' + Dates.aujourdhui() + (pourPartage ? '.txt' : '.json');
+    const nom = 'omni-animalia-sauvegarde-' + Dates.aujourdhui() + (pourPartage ? '.txt' : '.json');
     return new File([JSON.stringify(contenu)], nom, { type: pourPartage ? 'text/plain' : 'application/json' });
   },
 
@@ -57,7 +57,7 @@ const Sauvegarde = {
     const f = await this.fichier(mode === 'partager');
     let resultat;
     if (mode === 'partager') {
-      resultat = await Partage.envoyer(f, 'Sauvegarde Omni-Animaux');
+      resultat = await Partage.envoyer(f, 'Sauvegarde Omni-Animalia');
     } else {
       Partage.telecharger(f);
       resultat = 'telecharge';
@@ -72,7 +72,7 @@ const Sauvegarde = {
      Renvoie { donnees, reglages, resume } ou lance une erreur lisible. */
   async lireFichier(fichier) {
     if (!fichier) throw BD.erreur('Aucun fichier choisi.');
-    if (fichier.size > 300 * 1024 * 1024) throw BD.erreur('Ce fichier est beaucoup trop gros pour être une sauvegarde d’Omni-Animaux.');
+    if (fichier.size > 300 * 1024 * 1024) throw BD.erreur('Ce fichier est beaucoup trop gros pour être une sauvegarde d’Omni-Animalia.');
     let texte;
     try {
       texte = await fichier.text();
@@ -83,7 +83,7 @@ const Sauvegarde = {
     try {
       objet = JSON.parse(texte);
     } catch (e) {
-      throw BD.erreur('Ce fichier n’est pas une sauvegarde d’Omni-Animaux (il n’est pas au format JSON).');
+      throw BD.erreur('Ce fichier n’est pas une sauvegarde d’Omni-Animalia (il n’est pas au format JSON).');
     }
     return this.valider(objet);
   },
@@ -91,10 +91,10 @@ const Sauvegarde = {
   /* Vérifie le contenu, fiche par fiche */
   valider(objet) {
     if (!objet || objet.format !== this.FORMAT) {
-      throw BD.erreur('Ce fichier n’est pas une sauvegarde d’Omni-Animaux.');
+      throw BD.erreur('Ce fichier n’est pas une sauvegarde d’Omni-Animalia.');
     }
     if (typeof objet.versionFormat !== 'number' || objet.versionFormat > this.VERSION_FORMAT) {
-      throw BD.erreur('Cette sauvegarde vient d’une version plus récente d’Omni-Animaux. Mets l’application à jour, puis réessaie.');
+      throw BD.erreur('Cette sauvegarde vient d’une version plus récente d’Omni-Animalia. Mets l’application à jour, puis réessaie.');
     }
     if (!objet.donnees || typeof objet.donnees !== 'object') throw BD.erreur('Cette sauvegarde est vide ou abîmée.');
 

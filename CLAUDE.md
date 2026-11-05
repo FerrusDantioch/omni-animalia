@@ -1,4 +1,4 @@
-# Omni-Animaux — notes pour Claude
+# Omni-Animalia — notes pour Claude
 
 PWA de carnet de santé pour animaux de compagnie, en **HTML/CSS/JS pur, sans
 dépendance ni compilation**, 100 % hors ligne. Application de l'Omni-système,
@@ -49,7 +49,12 @@ français simple, réponses en français.
 
 - Base IndexedDB : `omni-animalia` (ne jamais renommer).
 - localStorage : seulement `omnianimaux_theme` et `omnianimaux_taille` (copies
-  pour éviter un éclair au démarrage).
+  pour éviter un éclair au démarrage). Clés gardées telles quelles malgré le
+  changement de nom (1.2.3) : les renommer ferait perdre les réglages.
+- Nom de l'application : **Omni-Animalia** depuis la 1.2.3 (avant : Omni-Animaux).
+  Seuls trois identifiants techniques invisibles gardent l'ancien nom, pour la
+  compatibilité : les deux clés localStorage ci-dessus et le format de sauvegarde
+  `omni-animaux-sauvegarde` (sinon les anciennes sauvegardes seraient refusées).
 - Caches : préfixe `omni-animalia-` ; `sw.js` ne supprime que ceux-là.
 - `manifest.json` : `"id": "/omni-animalia/"` (ne plus changer).
 

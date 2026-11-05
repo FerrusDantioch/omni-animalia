@@ -1,4 +1,4 @@
-/* Omni-Animaux — © 2026 Ferrus Dantioch
+/* Omni-Animalia — © 2026 Ferrus Dantioch
    Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
@@ -68,7 +68,7 @@ const EcranAgenda = {
         ? (!r.compteRendu ? bouton('Ajouter le compte rendu', () => this.formulaireRdv(a, r), { classe: 'secondaire', icone: 'crayon' }) : null)
         : bouton('Ajouter à Google Agenda', () => Agenda.proposer({
           uid: r.id, titre: a.nom + ' : rendez-vous vétérinaire' + (r.motif ? ' (' + r.motif + ')' : ''),
-          description: [r.veterinaire ? 'Vétérinaire : ' + r.veterinaire : '', 'Ajouté depuis Omni-Animaux.'].filter(Boolean).join('\n'),
+          description: [r.veterinaire ? 'Vétérinaire : ' + r.veterinaire : '', 'Ajouté depuis Omni-Animalia.'].filter(Boolean).join('\n'),
           lieu: this.lieu(r.veterinaire, vetos), date: r.date, heure: r.heure || ''
         }), { classe: 'secondaire', icone: 'cloche' })),
       modifier: a.archive ? null : () => this.formulaireRdv(a, r),
@@ -294,7 +294,7 @@ const EcranAgenda = {
         el('p', { class: 'aide', text: 'Pour ajouter d’un coup les ' + aVenir.length + ' rappels à venir à un agenda. Sur un téléphone Android, Google Agenda ne sait pas ouvrir ce fichier : utilise plutôt « Ajouter à Google Agenda » sur chaque rappel.' }),
         el('p', { class: 'aide', text: 'Sur un ordinateur : ouvre calendar.google.com, puis Paramètres → Importer et exporter → Importer, et choisis ce fichier. D’autres agendas (Samsung Agenda…) l’ouvrent directement.' }),
         bouton('Télécharger le fichier d’agenda', () => Agenda.envoyerFichier(
-          aVenir.map((r) => Agenda.depuisRappel(r, r.type === 'rdv' ? this.lieuRappel(r, d) : '')), 'omni-animaux-rappels-' + Dates.aujourdhui()),
+          aVenir.map((r) => Agenda.depuisRappel(r, r.type === 'rdv' ? this.lieuRappel(r, d) : '')), 'omni-animalia-rappels-' + Dates.aujourdhui()),
         { classe: 'secondaire large', icone: 'sauver', id: 'bouton-agenda-tout' })));
     }
   },

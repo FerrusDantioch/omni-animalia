@@ -1,8 +1,8 @@
-/* Omni-Animaux — © 2026 Ferrus Dantioch
+/* Omni-Animalia — © 2026 Ferrus Dantioch
    Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
-/* Service worker d'Omni-Animaux.
+/* Service worker d'Omni-Animalia.
    Rôle : rendre l'application utilisable SANS connexion internet.
    À la première visite, tous les fichiers sont rangés dans le téléphone
    (le « cache »), puis servis depuis là, même hors ligne
@@ -11,12 +11,12 @@
 /* ⚠️ À augmenter d'un cran (v1 → v2…) à CHAQUE modification d'un fichier
    de la liste FICHIERS ci-dessous (et VERSION dans app.js). Sinon, les
    téléphones qui ont déjà ouvert l'application gardent l'ancienne version. */
-const CACHE = 'omni-animalia-v5';
+const CACHE = 'omni-animalia-v6';
 
-/* Le début du nom de cache propre à Omni-Animaux. Toutes les applications
+/* Le début du nom de cache propre à Omni-Animalia. Toutes les applications
    de ferrusdantioch.github.io partagent le même espace de caches : on ne
    touche JAMAIS aux caches des autres applications, seulement aux
-   anciennes versions d'Omni-Animaux. */
+   anciennes versions d'Omni-Animalia. */
 const PREFIXE = 'omni-animalia-';
 
 /* La liste des fichiers indispensables au fonctionnement hors ligne.
@@ -79,7 +79,7 @@ self.addEventListener('install', (e) => {
   e.waitUntil(remplirCache());
 });
 
-/* 2. Activation : on supprime les anciennes versions d'Omni-Animaux,
+/* 2. Activation : on supprime les anciennes versions d'Omni-Animalia,
       et uniquement elles (voir PREFIXE plus haut). */
 self.addEventListener('activate', (e) => {
   e.waitUntil(
@@ -103,7 +103,7 @@ self.addEventListener('message', (e) => {
       ignoreSearch : une adresse avec un « ? » trouve quand même sa page. */
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  // Seulement les fichiers d'Omni-Animaux (pas les liens vers d'autres sites)
+  // Seulement les fichiers d'Omni-Animalia (pas les liens vers d'autres sites)
   if (!e.request.url.startsWith(self.registration.scope)) return;
 
   // À chaque ouverture de l'application, on vérifie que le cache est complet

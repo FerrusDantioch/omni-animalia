@@ -1,9 +1,9 @@
-/* Omni-Animaux — © 2026 Ferrus Dantioch
+/* Omni-Animalia — © 2026 Ferrus Dantioch
    Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
 /* ============================================================
-   Tests automatiques d'Omni-Animaux.
+   Tests automatiques d'Omni-Animalia.
    Ils ouvrent l'application dans un vrai navigateur (Chromium, piloté
    par Playwright), comme sur un téléphone, et vérifient qu'elle fait
    bien ce qu'on attend. Rien n'est envoyé sur internet.
@@ -42,12 +42,12 @@ async function enregistrer(p) {
   await pause(p, 600);
 }
 
-lancer('Omni-Animaux', async () => {
+lancer('Omni-Animalia', async () => {
   await controlesCommuns({ serviceWorker: 'sw.js' });
 
   await section('Manifest et icônes', async () => {
     const m = JSON.parse(fs.readFileSync(path.join(RACINE, 'manifest.json'), 'utf8'));
-    verifier(m.name && m.short_name === 'Omni-Animaux', 'nom et nom court');
+    verifier(m.name && m.short_name === 'Omni-Animalia', 'nom et nom court');
     verifier(m.lang === 'fr' && m.display === 'standalone', 'langue fr, affichage standalone');
     verifier(m.id === '/omni-animalia/', 'identifiant propre à l’application', m.id);
     verifier(/^#[0-9a-f]{6}$/i.test(m.theme_color) && /^#[0-9a-f]{6}$/i.test(m.background_color), 'couleurs définies');
@@ -281,7 +281,7 @@ lancer('Omni-Animaux', async () => {
     verifier(contenu.format === 'omni-animaux-sauvegarde' && contenu.versionFormat === 1, 'fichier avec format et numéro de version');
     verifier(contenu.donnees.animaux.length === 1 && contenu.donnees.pesees.length === 2, 'animal et pesées dans le fichier');
     verifier(contenu.donnees.animaux[0].photo.startsWith('data:image/jpeg'), 'photo incluse');
-    verifier(/^omni-animaux-sauvegarde-\d{4}-\d{2}-\d{2}\.json$/.test(telechargement.suggestedFilename()), 'nom du fichier daté', telechargement.suggestedFilename());
+    verifier(/^omni-animalia-sauvegarde-\d{4}-\d{2}-\d{2}\.json$/.test(telechargement.suggestedFilename()), 'nom du fichier daté', telechargement.suggestedFilename());
 
     // Tout supprimer (deux confirmations, la seconde en tapant SUPPRIMER)
     await p.locator('#reglages-contenu button', { hasText: 'Supprimer toutes les données' }).click();
@@ -295,7 +295,7 @@ lancer('Omni-Animaux', async () => {
     // Fichier invalide : refusé avec un message clair
     await p.setInputFiles('#fichier-import', { name: 'faux.json', mimeType: 'application/json', buffer: Buffer.from('{"format":"autre"}') });
     await p.waitForSelector('#dialogue[open]');
-    verifier((await texte(p, '#dialogue')).includes('n’est pas une sauvegarde d’Omni-Animaux'), 'fichier étranger refusé');
+    verifier((await texte(p, '#dialogue')).includes('n’est pas une sauvegarde d’Omni-Animalia'), 'fichier étranger refusé');
     await repondre(p, 'J’ai compris');
     const abime = JSON.parse(JSON.stringify(contenu));
     abime.donnees.pesees[0].date = '2026-13-45';
@@ -397,7 +397,7 @@ lancer('Omni-Animaux', async () => {
     await p.locator('#reglages-contenu button', { hasText: 'À propos' }).click();
     await pause(p, 500);
     const lien = await p.getAttribute('#apropos-contact a', 'href');
-    verifier(lien === 'mailto:omni-systeme.choking513@passmail.net?subject=Retour%20sur%20Omni-Animaux', 'bouton « Envoyer un retour par e-mail »', lien);
+    verifier(lien === 'mailto:omni-systeme.choking513@passmail.net?subject=Retour%20sur%20Omni-Animalia', 'bouton « Envoyer un retour par e-mail »', lien);
     await p.click('#copier-contact');
     await pause(p, 300);
     verifier(await p.evaluate(() => navigator.clipboard.readText()) === 'omni-systeme.choking513@passmail.net', 'bouton « Copier l’adresse »');
@@ -471,7 +471,7 @@ lancer('Omni-Animaux', async () => {
     await repondre(p, 'Partager');
     await pause(p, 600);
     const envoi = await p.evaluate(() => window.__partages[0]);
-    verifier(envoi && /^omni-animaux-sauvegarde-.*\.txt$/.test(envoi.nom) && envoi.type === 'text/plain' && JSON.parse(envoi.texte).format === 'omni-animaux-sauvegarde',
+    verifier(envoi && /^omni-animalia-sauvegarde-.*\.txt$/.test(envoi.nom) && envoi.type === 'text/plain' && JSON.parse(envoi.texte).format === 'omni-animaux-sauvegarde',
       'la sauvegarde part dans le menu Partager, en .txt (type accepté par Android)', envoi && [envoi.nom, envoi.type]);
     // Ce fichier .txt doit pouvoir être restauré
     await p.setInputFiles('#fichier-import', { name: envoi.nom, mimeType: 'text/plain', buffer: Buffer.from(envoi.texte) });
@@ -557,7 +557,7 @@ lancer('Omni-Animaux', async () => {
     await p.click('#agenda-tout summary');
     await p.click('#bouton-agenda-tout');
     await pause(p, 500);
-    const tout = await p.evaluate(() => window.__partages.find((x) => x.nom.startsWith('omni-animaux-rappels')));
+    const tout = await p.evaluate(() => window.__partages.find((x) => x.nom.startsWith('omni-animalia-rappels')));
     verifier(tout && (tout.texte.match(/BEGIN:VEVENT/g) || []).length >= 1, 'tous les rappels à venir dans un seul fichier d’agenda', tout && tout.nom);
   });
 
