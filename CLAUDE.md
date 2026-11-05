@@ -25,9 +25,13 @@ français simple, réponses en français.
 - **Aucun calendrier vaccinal prérempli** : seulement des noms proposés en
   saisie semi-automatique (`VACCINS_COURANTS`).
 - **Pas de notification** : les rappels sont calculés à l'ouverture. Pour être
-  prévenu, « Ajouter à l'agenda » (`outil-partage.js`) : fichier .ics (heure
-  « flottante » = locale, alertes veille / 1 h avant) partagé ou téléchargé, ou
-  lien Google Agenda (internet). C'est l'agenda du téléphone qui prévient.
+  prévenu : « Ajouter à Google Agenda » (`outil-partage.js`, lien direct, internet
+  nécessaire ; testé et validé par l'auteur sur son téléphone). Le fichier .ics
+  (tous les rappels) reste dans un bloc replié de la page Rappels, pour un
+  ordinateur : Google Agenda Android ne sait pas l'ouvrir.
+- **Chrome Android ne partage ni .json ni .ics** (types de fichiers limités) :
+  la sauvegarde est partagée en `.txt` / `text/plain` (même contenu) ;
+  « Restaurer » accepte `.json` et `.txt`.
 - **Prises de médicaments** (`prisesParJour`, `prises` = { jour: [heures] },
   120 jours gardés) : noter une prise de plus que prévu demande confirmation
   (risque de double dose).

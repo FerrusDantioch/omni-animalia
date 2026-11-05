@@ -69,7 +69,7 @@ const EcranReglages = {
       })));
 
     // 3. Sauvegarde et restauration
-    const choixFichier = el('input', { type: 'file', accept: '.json,application/json', class: 'invisible', tabindex: '-1', 'aria-hidden': 'true', id: 'fichier-import' });
+    const choixFichier = el('input', { type: 'file', accept: '.json,.txt,application/json,text/plain', class: 'invisible', tabindex: '-1', 'aria-hidden': 'true', id: 'fichier-import' });
     choixFichier.addEventListener('change', () => {
       const f = choixFichier.files[0];
       choixFichier.value = '';
@@ -84,7 +84,7 @@ const EcranReglages = {
         bouton('Sauvegarder toutes mes données', () => this.sauvegarder(), { classe: 'principal large', icone: 'sauver', id: 'bouton-sauvegarder' }),
         bouton('Restaurer une sauvegarde', () => choixFichier.click(), { classe: 'secondaire large', icone: 'restaurer', id: 'bouton-restaurer' })),
       choixFichier,
-      el('p', { class: 'aide', text: 'Le fichier de sauvegarde (.json) contient tout, photos comprises. Il se retrouve en général dans le dossier « Téléchargements ». Il n’est pas chiffré : garde-le en lieu sûr.' })));
+      el('p', { class: 'aide', text: 'Le fichier de sauvegarde contient tout, photos et documents compris. Téléchargé, il finit par .json et se retrouve en général dans « Téléchargements » ; partagé, il finit par .txt (c’est normal : « Restaurer » accepte les deux). Il n’est pas chiffré : garde-le en lieu sûr.' })));
 
     // 4. Mot de passe
     const blocMdp = this.bloc('Mot de passe',
@@ -148,7 +148,7 @@ const EcranReglages = {
   async sauvegarder() {
     try {
       let mode = 'telecharger';
-      if (Partage.possible(new File(['{}'], 'essai.json', { type: 'application/json' }))) {
+      if (Partage.possible(new File(['{}'], 'essai.txt', { type: 'text/plain' }))) {
         mode = await UI.choisir({
           titre: 'Sauvegarder toutes mes données',
           message: [

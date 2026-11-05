@@ -459,7 +459,14 @@ lancer('Omni-Animaux', async () => {
     await repondre(p, 'Partager');
     await pause(p, 600);
     const envoi = await p.evaluate(() => window.__partages[0]);
-    verifier(envoi && /^omni-animaux-sauvegarde-.*\.json$/.test(envoi.nom) && JSON.parse(envoi.texte).format === 'omni-animaux-sauvegarde', 'le fichier de sauvegarde part dans le menu Partager', envoi && envoi.nom);
+    verifier(envoi && /^omni-animaux-sauvegarde-.*\.txt$/.test(envoi.nom) && envoi.type === 'text/plain' && JSON.parse(envoi.texte).format === 'omni-animaux-sauvegarde',
+      'la sauvegarde part dans le menu Partager, en .txt (type accepté par Android)', envoi && [envoi.nom, envoi.type]);
+    // Ce fichier .txt doit pouvoir être restauré
+    await p.setInputFiles('#fichier-import', { name: envoi.nom, mimeType: 'text/plain', buffer: Buffer.from(envoi.texte) });
+    await p.waitForSelector('#dialogue[open]');
+    verifier((await texte(p, '#dialogue')).includes('Restaurer cette sauvegarde'), 'la sauvegarde .txt est reconnue par « Restaurer »');
+    await repondre(p, 'Fusionner');
+    await pause(p, 600);
     verifier(await p.evaluate(async () => (await BD.reglage('derniereSauvegarde')) === Dates.aujourdhui()), 'date de dernière sauvegarde mise à jour');
     await fauxPartage(true);
     await p.evaluate(() => BD.definirReglage('derniereSauvegarde', '2020-01-01'));
@@ -488,16 +495,20 @@ lancer('Omni-Animaux', async () => {
     }
     const frais = await texte(p, '#animal-contenu .encart.frais');
     verifier(frais.includes(String(new Date().getFullYear() - 1) + ' : 40,00 €') && frais.includes('Total : 65,50 €'), 'frais par année et total', frais);
-    await p.locator('#animal-contenu button', { hasText: 'Ajouter à l’agenda' }).first().click();
+    // Sans internet : message clair, rien ne s'ouvre
+    await ctx.setOffline(true);
+    await p.locator('#animal-contenu button', { hasText: 'Ajouter à Google Agenda' }).first().click();
     await p.waitForSelector('#dialogue[open]');
-    await repondre(p, 'Fichier d’agenda');
-    await pause(p, 500);
-    const ics = await p.evaluate(() => window.__partages.find((x) => x.nom.endsWith('.ics')));
-    verifier(ics && ics.type === 'text/calendar' && ics.texte.includes('T173000') && ics.texte.includes('Contrôle'), 'fichier d’agenda du rendez-vous partagé', ics && ics.nom);
-    await p.locator('#animal-contenu button', { hasText: 'Ajouter à l’agenda' }).first().click();
+    verifier((await texte(p, '#dialogue')).includes('Pas de connexion internet'), 'sans internet : message clair');
+    await repondre(p, 'J’ai compris');
+    await ctx.setOffline(false);
+    verifier(!(await p.evaluate(() => window.__ouvert)), 'sans internet : Google Agenda n’est pas ouvert');
+    // Avec internet : confirmation, puis Google Agenda s'ouvre, événement rempli
+    await p.locator('#animal-contenu button', { hasText: 'Ajouter à Google Agenda' }).first().click();
     await p.waitForSelector('#dialogue[open]');
-    await repondre(p, 'Google Agenda');
+    await repondre(p, 'Ouvrir Google Agenda');
     const lien = await p.evaluate(() => window.__ouvert || '');
+    verifier(lien.includes('T173000%2F') && lien.includes('Contr%C3%B4le'), 'le rendez-vous de 17 h 30 est prérempli', lien);
     verifier(lien.startsWith('https://calendar.google.com/calendar/render?action=TEMPLATE'), 'lien Google Agenda préparé');
   });
 
@@ -531,6 +542,7 @@ lancer('Omni-Animaux', async () => {
     await pause(p, 600);
     verifier((await texte(p, '#rappels-liste .medicaments')).includes('2 prises sur 2'), 'prise notée depuis la page Rappels');
     await fauxPartage(false);
+    await p.click('#agenda-tout summary');
     await p.click('#bouton-agenda-tout');
     await pause(p, 500);
     const tout = await p.evaluate(() => window.__partages.find((x) => x.nom.startsWith('omni-animaux-rappels')));

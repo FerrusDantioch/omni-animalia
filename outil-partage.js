@@ -9,10 +9,15 @@
       messagerie…) avec un fichier. Si le téléphone ne sait pas le faire,
       le fichier est simplement téléchargé.
 
-   2. Agenda : fabrique un « fichier d'agenda » (format .ics, compris par
-      presque tous les agendas) ou un lien vers Google Agenda. C'est alors
-      l'AGENDA du téléphone qui prévient à l'heure : Omni-Animaux, elle,
-      ne peut pas envoyer de notification.
+   2. Agenda : ouvre Google Agenda avec l'événement déjà rempli (un
+      rappel, un rendez-vous), ou fabrique un « fichier d'agenda » (.ics)
+      avec TOUS les rappels, à importer depuis un ordinateur. C'est alors
+      l'AGENDA qui prévient à l'heure : Omni-Animaux, elle, ne peut pas
+      envoyer de notification.
+
+   ⚠️ Chrome sur Android ne laisse passer dans le menu « Partager » que
+   certains types de fichiers (images, PDF, texte…) : ni .ics ni .json.
+   D'où la sauvegarde partagée en .txt (voir bd-sauvegarde.js).
    ============================================================ */
 'use strict';
 
@@ -156,27 +161,28 @@ const Agenda = {
     return 'https://calendar.google.com/calendar/render?' + p.toString();
   },
 
-  /* Propose d'ajouter UN événement à l'agenda : fichier ou Google Agenda */
+  /* Ajoute UN événement à Google Agenda.
+     (Sur Android, Google Agenda ne sait pas ouvrir un fichier .ics : le
+     lien direct est la seule méthode fiable. Il faut internet.) */
   async proposer(ev) {
-    const choix = await UI.choisir({
-      titre: 'Ajouter à l’agenda',
+    if (navigator.onLine === false) {
+      await UI.informer({
+        titre: 'Pas de connexion internet',
+        message: ['Google Agenda a besoin d’internet pour enregistrer l’événement.',
+          'Réessaie quand ton téléphone est connecté (Wi-Fi ou données mobiles).']
+      });
+      return;
+    }
+    const ok = await UI.confirmer({
+      titre: 'Ajouter à Google Agenda',
       message: [
         '« ' + ev.titre + ' », ' + (ev.heure ? Dates.frHeure(ev.date, ev.heure) : 'le ' + Dates.fr(ev.date)) + '.',
-        'Ton agenda pourra alors te prévenir à l’avance (la veille, et une heure avant un rendez-vous), même quand Omni-Animaux est fermée.',
-        'Fichier d’agenda : s’ouvre avec l’agenda du téléphone qui accepte ce type de fichier (Samsung Agenda, par exemple).',
-        'Google Agenda : ouvre Google Agenda avec l’événement déjà rempli. Il faut une connexion internet.'
+        'Google Agenda va s’ouvrir avec l’événement déjà rempli. Vérifie-le, puis touche « Enregistrer ».',
+        'Ton agenda pourra ensuite te prévenir, même quand Omni-Animaux est fermée (avec les notifications réglées dans Google Agenda).'
       ],
-      choix: [
-        { valeur: null, texte: 'Annuler' },
-        { valeur: 'google', texte: 'Google Agenda' },
-        { valeur: 'fichier', texte: 'Fichier d’agenda', principal: true }
-      ]
+      oui: 'Ouvrir Google Agenda'
     });
-    if (choix === 'google') {
-      window.open(this.lienGoogle(ev), '_blank', 'noopener');
-    } else if (choix === 'fichier') {
-      await this.envoyerFichier([ev], Partage.nomFichier(ev.titre + '-' + ev.date));
-    }
+    if (ok) window.open(this.lienGoogle(ev), '_blank', 'noopener');
   },
 
   /* Partage (ou télécharge) un fichier .ics contenant ces événements */

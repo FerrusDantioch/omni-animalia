@@ -39,11 +39,14 @@ const Sauvegarde = {
     };
   },
 
-  /* Fabrique le fichier de sauvegarde (sans l'envoyer nulle part) */
-  async fichier() {
+  /* Fabrique le fichier de sauvegarde (sans l'envoyer nulle part).
+     « pourPartage » : Chrome sur Android refuse de partager un fichier
+     .json ; on l'envoie donc comme un simple fichier texte (.txt). Le
+     contenu est exactement le même, et « Restaurer » accepte les deux. */
+  async fichier(pourPartage) {
     const contenu = await this.preparer();
-    const nom = 'omni-animaux-sauvegarde-' + Dates.aujourdhui() + '.json';
-    return new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
+    const nom = 'omni-animaux-sauvegarde-' + Dates.aujourdhui() + (pourPartage ? '.txt' : '.json');
+    return new File([JSON.stringify(contenu)], nom, { type: pourPartage ? 'text/plain' : 'application/json' });
   },
 
   /* Fabrique le fichier, puis le partage (mode « partager » : Drive,
@@ -51,7 +54,7 @@ const Sauvegarde = {
      Renvoie { nom, taille, resultat } ; resultat vaut 'partage',
      'telecharge' ou 'annule' (menu de partage fermé sans choisir). */
   async exporter(mode) {
-    const f = await this.fichier();
+    const f = await this.fichier(mode === 'partager');
     let resultat;
     if (mode === 'partager') {
       resultat = await Partage.envoyer(f, 'Sauvegarde Omni-Animaux');

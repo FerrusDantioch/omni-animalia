@@ -23,7 +23,7 @@ const ADRESSE_CONTACT = '';
 
 /* Numéro de version affiché dans « À propos ».
    ⚠️ À changer en même temps que CACHE dans sw.js. */
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 
 
 /* ---------- 1. Le thème ---------- */
@@ -408,7 +408,7 @@ const App = {
         message: [
           'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire.',
           'Tes données restent uniquement sur cet appareil : rien n’est envoyé sur internet. Pense à faire des sauvegardes régulières (Réglages → Sauvegarder) pour ne pas les perdre.',
-          'Les rappels s’affichent quand tu ouvres l’application : elle n’envoie pas de notification. Pour être prévenu à l’heure, utilise « Ajouter à l’agenda ».'
+          'Les rappels s’affichent quand tu ouvres l’application : elle n’envoie pas de notification. Pour être prévenu à l’heure, utilise « Ajouter à Google Agenda ».'
         ]
       });
       await BD.definirReglage('avertissementVu', true);

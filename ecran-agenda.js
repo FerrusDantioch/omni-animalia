@@ -66,7 +66,7 @@ const EcranAgenda = {
         EcranAnimal.ligne('Coût', typeof r.cout === 'number' ? UI.euros(r.cout) : '')],
       autres: a.archive ? null : (passe
         ? (!r.compteRendu ? bouton('Ajouter le compte rendu', () => this.formulaireRdv(a, r), { classe: 'secondaire', icone: 'crayon' }) : null)
-        : bouton('Ajouter à l’agenda', () => Agenda.proposer({
+        : bouton('Ajouter à Google Agenda', () => Agenda.proposer({
           uid: r.id, titre: a.nom + ' : rendez-vous vétérinaire' + (r.motif ? ' (' + r.motif + ')' : ''),
           description: [r.veterinaire ? 'Vétérinaire : ' + r.veterinaire : '', 'Ajouté depuis Omni-Animaux.'].filter(Boolean).join('\n'),
           lieu: this.lieu(r.veterinaire, vetos), date: r.date, heure: r.heure || ''
@@ -289,12 +289,13 @@ const EcranAgenda = {
     // Tout envoyer d'un coup vers l'agenda du téléphone
     const aVenir = tous.filter((r) => r.ecart >= 0);
     if (aVenir.length) {
-      zone.append(el('section', { class: 'bloc' },
-        el('h2', { text: 'Dans ton agenda' }),
-        el('p', { class: 'aide', text: 'Omni-Animaux ne peut pas te prévenir quand elle est fermée. Ton agenda, lui, le peut : envoie-lui tous les rappels à venir (' + aVenir.length + ') dans un seul fichier d’agenda. À refaire après avoir ajouté de nouveaux rappels.' }),
-        bouton('Ajouter tous les rappels à l’agenda', () => Agenda.envoyerFichier(
+      zone.append(el('details', { class: 'filtre', id: 'agenda-tout' },
+        el('summary', { text: 'Tous les rappels dans un fichier d’agenda' }),
+        el('p', { class: 'aide', text: 'Pour ajouter d’un coup les ' + aVenir.length + ' rappels à venir à un agenda. Sur un téléphone Android, Google Agenda ne sait pas ouvrir ce fichier : utilise plutôt « Ajouter à Google Agenda » sur chaque rappel.' }),
+        el('p', { class: 'aide', text: 'Sur un ordinateur : ouvre calendar.google.com, puis Paramètres → Importer et exporter → Importer, et choisis ce fichier. D’autres agendas (Samsung Agenda…) l’ouvrent directement.' }),
+        bouton('Télécharger le fichier d’agenda', () => Agenda.envoyerFichier(
           aVenir.map((r) => Agenda.depuisRappel(r, r.type === 'rdv' ? this.lieuRappel(r, d) : '')), 'omni-animaux-rappels-' + Dates.aujourdhui()),
-        { classe: 'secondaire large', icone: 'cloche', id: 'bouton-agenda-tout' })));
+        { classe: 'secondaire large', icone: 'sauver', id: 'bouton-agenda-tout' })));
     }
   },
 
@@ -317,7 +318,7 @@ const EcranAgenda = {
     const actions = el('div', { class: 'rangee-boutons' },
       bouton('Voir la fiche', () => Nav.aller({ vue: 'animal', id: r.animalId, section: r.section }), { classe: 'secondaire' }));
     if (r.ecart >= 0) {
-      actions.append(bouton('Ajouter à l’agenda', async () => {
+      actions.append(bouton('Ajouter à Google Agenda', async () => {
         const d = { rdv: r.type === 'rdv' ? [await BD.lire('rdv', r.id)].filter(Boolean) : [], veterinaires: this._vetos || [] };
         Agenda.proposer(Agenda.depuisRappel(r, r.type === 'rdv' ? this.lieuRappel(r, d) : ''));
       }, { classe: 'secondaire', icone: 'cloche' }));
