@@ -67,20 +67,20 @@ const EcranReglages = {
     });
     zone.append(this.bloc('Sauvegarde et restauration',
       el('div', { class: 'encart attention' },
-        el('p', { text: 'Vos données restent uniquement sur cet appareil. Si le téléphone est perdu, réinitialisé, ou si les données du navigateur sont effacées, elles disparaissent.' }),
-        el('p', { text: 'Faites une sauvegarde régulièrement, et gardez le fichier ailleurs (ordinateur, clé USB, courriel à vous-même…).' })),
+        el('p', { text: 'Tes données restent uniquement sur cet appareil. Si le téléphone est perdu, réinitialisé, ou si les données du navigateur sont effacées, elles disparaissent.' }),
+        el('p', { text: 'Fais une sauvegarde régulièrement, et garde le fichier ailleurs (ordinateur, clé USB, courriel à toi-même…).' })),
       el('p', { text: 'Dernière sauvegarde : ' + (derniere ? Dates.fr(derniere) : 'jamais') }),
       el('div', { class: 'pile-boutons' },
         bouton('Sauvegarder toutes mes données', () => this.sauvegarder(), { classe: 'principal large', icone: 'sauver', id: 'bouton-sauvegarder' }),
         bouton('Restaurer une sauvegarde', () => choixFichier.click(), { classe: 'secondaire large', icone: 'restaurer', id: 'bouton-restaurer' })),
       choixFichier,
-      el('p', { class: 'aide', text: 'Le fichier de sauvegarde (.json) contient tout, photos comprises. Il se retrouve en général dans le dossier « Téléchargements ». Il n’est pas chiffré : gardez-le en lieu sûr.' })));
+      el('p', { class: 'aide', text: 'Le fichier de sauvegarde (.json) contient tout, photos comprises. Il se retrouve en général dans le dossier « Téléchargements ». Il n’est pas chiffré : garde-le en lieu sûr.' })));
 
     // 4. Mot de passe
     const blocMdp = this.bloc('Mot de passe',
       el('p', { text: mdp ? 'Le verrouillage par mot de passe est activé.' : 'Le verrouillage par mot de passe est désactivé.' }),
       el('div', { class: 'encart' },
-        el('p', { text: 'Ce verrou empêche quelqu’un qui prend votre téléphone d’ouvrir l’application. Il ne chiffre pas les données : une personne qui s’y connaît pourrait les lire autrement. Il protège contre un regard indiscret, pas contre un vol organisé.' }),
+        el('p', { text: 'Ce verrou empêche quelqu’un qui prend ton téléphone d’ouvrir l’application. Il ne chiffre pas les données : une personne qui s’y connaît pourrait les lire autrement. Il protège contre un regard indiscret, pas contre un vol organisé.' }),
         el('p', { text: 'Le mot de passe n’est pas enregistré : seule une empreinte calculée l’est. Il ne peut donc pas être récupéré en cas d’oubli. L’application se verrouille à l’ouverture et après 5 minutes en arrière-plan.' })));
     const boutonsMdp = el('div', { class: 'pile-boutons' });
     if (mdp) {
@@ -95,7 +95,7 @@ const EcranReglages = {
 
     // 5. Exemple de démonstration
     zone.append(this.bloc('Essayer avec un exemple',
-      el('p', { class: 'aide', text: 'Ajoute un chien et un chat inventés (avec pesées, vaccins, rappels…) pour découvrir l’application. Vos vraies données ne sont pas touchées, et l’exemple se retire en un clic.' }),
+      el('p', { class: 'aide', text: 'Ajoute un chien et un chat inventés (avec pesées, vaccins, rappels…) pour découvrir l’application. Tes vraies données ne sont pas touchées, et l’exemple se retire en un clic.' }),
       exemple
         ? bouton('Supprimer l’exemple', () => this.supprimerExemple(), { classe: 'secondaire large', icone: 'poubelle', id: 'bouton-exemple' })
         : bouton('Charger un exemple', () => this.chargerExemple(), { classe: 'secondaire large', icone: 'patte', id: 'bouton-exemple' })));
@@ -104,8 +104,8 @@ const EcranReglages = {
     const infoStockage = el('p', { class: 'aide', text: 'Calcul de la place utilisée…' });
     zone.append(this.bloc('Stockage sur l’appareil',
       el('p', { text: App.stockageProtege === true
-        ? 'Stockage protégé : oui. Le navigateur ne doit pas effacer vos données pour faire de la place.'
-        : 'Stockage protégé : non. En cas de manque de place, le navigateur pourrait effacer les données. Installer l’application sur l’écran d’accueil aide à obtenir cette protection. Dans tous les cas, faites des sauvegardes.' }),
+        ? 'Stockage protégé : oui. Le navigateur ne doit pas effacer tes données pour faire de la place.'
+        : 'Stockage protégé : non. En cas de manque de place, le navigateur pourrait effacer les données. Installer l’application sur l’écran d’accueil aide à obtenir cette protection. Dans tous les cas, fais des sauvegardes.' }),
       infoStockage));
     this.majStockage(infoStockage);
 
@@ -191,8 +191,8 @@ const EcranReglages = {
   /* ---------- Mot de passe ---------- */
   formulaireMdp(action) {
     const champsNouveau = [
-      { nom: 'nouveau', label: 'Nouveau mot de passe', type: 'motdepasse', requis: true, aide: 'Au moins 4 caractères. Notez-le quelque part : il ne peut pas être récupéré.' },
-      { nom: 'confirmation', label: 'Retapez le nouveau mot de passe', type: 'motdepasse', requis: true }
+      { nom: 'nouveau', label: 'Nouveau mot de passe', type: 'motdepasse', requis: true, aide: 'Au moins 4 caractères. Note-le quelque part : il ne peut pas être récupéré.' },
+      { nom: 'confirmation', label: 'Retape le nouveau mot de passe', type: 'motdepasse', requis: true }
     ];
     const champActuel = { nom: 'actuel', label: 'Mot de passe actuel', type: 'motdepasse', requis: true, autocomplete: 'current-password' };
     const verifierNouveau = (v) => {
@@ -243,7 +243,7 @@ const EcranReglages = {
   async supprimerExemple() {
     const ok = await UI.confirmer({
       titre: 'Supprimer l’exemple ?',
-      message: 'Biscuit, Moka et le vétérinaire d’exemple seront effacés, avec tout leur historique. Vos propres données ne sont pas touchées.',
+      message: 'Biscuit, Moka et le vétérinaire d’exemple seront effacés, avec tout leur historique. Tes propres données ne sont pas touchées.',
       oui: 'Supprimer l’exemple', danger: true
     });
     if (!ok) return;
@@ -263,7 +263,7 @@ const EcranReglages = {
     const ok1 = await UI.confirmer({
       titre: 'Supprimer toutes les données ?',
       message: ['Tous les animaux (y compris archivés), leur historique, leurs photos, les vétérinaires et les réglages seront effacés de ce téléphone.',
-        'Pensez à faire une sauvegarde avant, si vous voulez pouvoir revenir en arrière.'],
+        'Pense à faire une sauvegarde avant, si tu veux pouvoir revenir en arrière.'],
       oui: 'Continuer', danger: true
     });
     if (!ok1) return;

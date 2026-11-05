@@ -125,14 +125,14 @@ const EcranAgenda = {
         { nom: 'repete', label: 'Répétition', type: 'radios', requis: true, options: [{ valeur: 'non', texte: 'Une seule fois' }, { valeur: 'oui', texte: 'Se répète' }] },
         { nom: 'recN', label: 'Tous les…', type: 'nombre', entier: true, positif: true, max: 999, visibleSi: (v) => v.repete === 'oui' },
         { nom: 'recUnite', label: 'Unité', type: 'choix', options: UNITES_RECURRENCE, visibleSi: (v) => v.repete === 'oui',
-          aide: 'Quand vous cochez « fait », la tâche suivante est créée automatiquement, au même rythme.' },
+          aide: 'Quand tu coches « fait », la tâche suivante est créée automatiquement, au même rythme.' },
         { nom: 'note', label: 'Note', type: 'zone' }
       ],
       valider: (v) => {
         const e = {};
         if (v.repete === 'oui') {
-          if (!v.echeance) e.echeance = 'Indiquez une date : elle sert de point de départ à la répétition.';
-          if (v.recN === null || v.recN === undefined) e.recN = 'Indiquez tous les combien (exemple : 2).';
+          if (!v.echeance) e.echeance = 'Indique une date : elle sert de point de départ à la répétition.';
+          if (v.recN === null || v.recN === undefined) e.recN = 'Indique tous les combien (exemple : 2).';
         }
         return e;
       },

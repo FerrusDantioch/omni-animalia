@@ -23,7 +23,7 @@ const ADRESSE_CONTACT = '';
 
 /* Numéro de version affiché dans « À propos ».
    ⚠️ À changer en même temps que CACHE dans sw.js. */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 
 /* ---------- 1. Le thème ---------- */
@@ -216,14 +216,14 @@ const Verrou = {
       champ.focus();
       const soumettre = async (e) => {
         e.preventDefault();
-        if (!champ.value) { erreur.textContent = 'Tapez votre mot de passe.'; erreur.hidden = false; return; }
+        if (!champ.value) { erreur.textContent = 'Tape ton mot de passe.'; erreur.hidden = false; return; }
         if (await this.verifier(champ.value)) {
           form.removeEventListener('submit', soumettre);
           champ.value = '';
           ecran.hidden = true;
           ok();
         } else {
-          erreur.textContent = 'Mot de passe incorrect. Vérifiez les majuscules et réessayez.';
+          erreur.textContent = 'Mot de passe incorrect. Vérifie les majuscules et réessaie.';
           erreur.hidden = false;
           champ.select();
         }
@@ -338,7 +338,7 @@ const App = {
     const contact = $('#apropos-contact');
     if (ADRESSE_CONTACT) {
       contact.append(
-        el('p', {}, 'Une idée, une gêne, quelque chose qui manque ? Vos retours sont les bienvenus. Écrivez à : ',
+        el('p', {}, 'Une idée, une gêne, quelque chose qui manque ? Tes retours sont les bienvenus. Écris à : ',
           el('span', { class: 'adresse-mail', text: ADRESSE_CONTACT })),
         el('a', { class: 'bouton large', href: 'mailto:' + ADRESSE_CONTACT + '?subject=' + encodeURIComponent('Retour sur Omni-Animaux'), text: 'Envoyer un retour par e-mail' })
       );
@@ -389,9 +389,9 @@ const App = {
       await UI.informer({
         titre: 'Bienvenue dans Omni-Animaux',
         message: [
-          'Cette application sert à organiser vos informations. Elle ne remplace pas l’avis d’un vétérinaire.',
-          'Vos données restent uniquement sur cet appareil : rien n’est envoyé sur internet. Pensez à faire des sauvegardes régulières (Réglages → Sauvegarder) pour ne pas les perdre.',
-          'Les rappels s’affichent quand vous ouvrez l’application : elle n’envoie pas de notification.'
+          'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire.',
+          'Tes données restent uniquement sur cet appareil : rien n’est envoyé sur internet. Pense à faire des sauvegardes régulières (Réglages → Sauvegarder) pour ne pas les perdre.',
+          'Les rappels s’affichent quand tu ouvres l’application : elle n’envoie pas de notification.'
         ]
       });
       await BD.definirReglage('avertissementVu', true);

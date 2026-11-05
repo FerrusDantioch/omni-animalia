@@ -29,7 +29,7 @@ const Photo = {
       const url = URL.createObjectURL(fichier);
       const img = new Image();
       img.onload = () => { URL.revokeObjectURL(url); ok(img); };
-      img.onerror = () => { URL.revokeObjectURL(url); echec(new Error('Cette image n’a pas pu être lue. Essayez une autre photo (JPEG ou PNG).')); };
+      img.onerror = () => { URL.revokeObjectURL(url); echec(new Error('Cette image n’a pas pu être lue. Essaie une autre photo (JPEG ou PNG).')); };
       img.src = url;
     });
   },

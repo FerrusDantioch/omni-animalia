@@ -59,10 +59,10 @@ const EcranAccueil = {
       const depuis = Dates.ecartJours(derniere || debut, Dates.aujourdhui());
       if (depuis > 30) {
         const texte = derniere
-          ? 'Votre dernière sauvegarde date du ' + Dates.fr(derniere) + ' (il y a ' + depuis + ' jours).'
-          : 'Vous n’avez encore jamais fait de sauvegarde.';
+          ? 'Ta dernière sauvegarde date du ' + Dates.fr(derniere) + ' (il y a ' + depuis + ' jours).'
+          : 'Tu n’as encore jamais fait de sauvegarde.';
         const encart = el('div', { class: 'encart rappel-sauvegarde', role: 'note' },
-          el('p', { text: texte + ' Vos données ne sont que sur ce téléphone : une sauvegarde évite de tout perdre.' }),
+          el('p', { text: texte + ' Tes données ne sont que sur ce téléphone : une sauvegarde évite de tout perdre.' }),
           el('div', { class: 'rangee-boutons' },
             bouton('Sauvegarder maintenant', () => EcranReglages.sauvegarder(), { classe: 'principal', icone: 'sauver' }),
             bouton('Plus tard', () => { this.rappelSauvegardeMasque = true; encart.remove(); }, { classe: 'secondaire' })));
@@ -74,7 +74,7 @@ const EcranAccueil = {
     if (!actifs.length) {
       liste.append(el('div', { class: 'encart vide' },
         el('p', { text: 'Aucun animal pour l’instant.' }),
-        el('p', { text: 'Touchez « Ajouter un animal » pour commencer. Pour essayer l’application sans rien taper, ouvrez Réglages puis « Charger un exemple ».' })));
+        el('p', { text: 'Touche « Ajouter un animal » pour commencer. Pour essayer l’application sans rien taper, ouvre Réglages puis « Charger un exemple ».' })));
     }
     for (const a of actifs) liste.append(this.carte(a, compte[a.id]));
 
@@ -119,7 +119,7 @@ const EcranAccueil = {
     if (!ok1) return;
     const ok2 = await UI.confirmer({
       titre: 'Dernière confirmation',
-      message: ['Cette suppression est définitive : elle ne peut pas être annulée.', 'Si vous voulez garder une trace, faites d’abord une sauvegarde.'],
+      message: ['Cette suppression est définitive : elle ne peut pas être annulée.', 'Si tu veux garder une trace, fais d’abord une sauvegarde.'],
       oui: 'Supprimer définitivement', danger: true
     });
     if (!ok2) return;

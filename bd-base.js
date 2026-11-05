@@ -124,7 +124,7 @@ const BD = {
   ouvrir() {
     return new Promise((ok, echec) => {
       if (!('indexedDB' in window)) {
-        return echec(this.erreur('Ce navigateur ne permet pas d’enregistrer des données. Essayez avec Chrome, à jour.'));
+        return echec(this.erreur('Ce navigateur ne permet pas d’enregistrer des données. Essaie avec Chrome, à jour.'));
       }
       let demande;
       try {
@@ -148,8 +148,8 @@ const BD = {
         this.base.onversionchange = () => { this.base.close(); location.reload(); };
         ok(this.base);
       };
-      demande.onerror = () => echec(this.erreur('La base de données n’a pas pu s’ouvrir. Fermez puis rouvrez l’application. Si le problème continue, vérifiez qu’il reste de la place sur le téléphone.'));
-      demande.onblocked = () => echec(this.erreur('L’application est ouverte dans un autre onglet. Fermez les autres onglets puis réessayez.'));
+      demande.onerror = () => echec(this.erreur('La base de données n’a pas pu s’ouvrir. Ferme puis rouvre l’application. Si le problème continue, vérifie qu’il reste de la place sur le téléphone.'));
+      demande.onblocked = () => echec(this.erreur('L’application est ouverte dans un autre onglet. Ferme les autres onglets puis réessaie.'));
     });
   },
 

@@ -207,7 +207,7 @@ const EcranAnimal = {
       valeurs: a,
       champs: [
         { nom: 'nom', label: 'Nom', type: 'texte', requis: true, long: 80 },
-        { nom: 'espece', label: 'Espèce', type: 'texte', suggestions: ESPECES, aide: 'Choisissez dans la liste ou tapez librement (par exemple : « Tortue »).', long: 80 },
+        { nom: 'espece', label: 'Espèce', type: 'texte', suggestions: ESPECES, aide: 'Choisis dans la liste ou tape librement (par exemple : « Tortue »).', long: 80 },
         { nom: 'race', label: 'Race', type: 'texte', long: 120 },
         { nom: 'sexe', label: 'Sexe', type: 'radios', options: [{ valeur: 'male', texte: 'Mâle' }, { valeur: 'femelle', texte: 'Femelle' }, { valeur: 'inconnu', texte: 'Je ne sais pas' }] },
         { nom: 'couleur', label: 'Couleur et signes distinctifs', type: 'texte', long: 300 },
@@ -242,14 +242,14 @@ const EcranAnimal = {
   formulaireArchive(animal) {
     Formulaire.ouvrir({
       titre: 'Archiver ' + animal.nom,
-      intro: animal.nom + ' quittera la liste principale. Tout son historique sera conservé dans « Animaux archivés », et vous pourrez le restaurer à tout moment.',
+      intro: animal.nom + ' quittera la liste principale. Tout son historique sera conservé dans « Animaux archivés », et tu pourras le restaurer à tout moment.',
       texteBouton: 'Archiver',
       valeurs: { dateArchive: Dates.aujourdhui() },
       champs: [
         { nom: 'motif', label: 'Pourquoi ?', type: 'radios', requis: true, options: [
           { valeur: 'décédé', texte: 'Décédé' }, { valeur: 'confié', texte: 'Confié à quelqu’un' },
           { valeur: 'vendu', texte: 'Vendu' }, { valeur: 'autre', texte: 'Autre raison' }] },
-        { nom: 'precision', label: 'Précisez', type: 'texte', long: 120, visibleSi: (v) => v.motif === 'autre' },
+        { nom: 'precision', label: 'Précise', type: 'texte', long: 120, visibleSi: (v) => v.motif === 'autre' },
         { nom: 'dateArchive', label: 'Date', type: 'date', requis: true, pasDansFutur: true }
       ],
       enregistrer: async (v) => {
@@ -364,7 +364,7 @@ const EcranAnimal = {
         rdv.sort(parDate('date')).map((r) => [Dates.frHeure(r.date, r.heure), r.motif, r.veterinaire, r.compteRendu]))),
       section('Notes de santé', tableau(['Date', 'Type', 'Note'],
         notes.sort(parDate('date')).map((n) => [Dates.fr(n.date), EcranSante.NOMS_NOTES[n.categorie] || '', n.texte]))),
-      el('footer', { class: 'carnet-pied', text: 'Cette application sert à organiser vos informations. Elle ne remplace pas l’avis d’un vétérinaire. — Omni-Animaux, © 2026 Ferrus Dantioch' })
+      el('footer', { class: 'carnet-pied', text: 'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire. — Omni-Animaux, © 2026 Ferrus Dantioch' })
     );
 
     // Le titre de la page devient le nom proposé pour le fichier PDF

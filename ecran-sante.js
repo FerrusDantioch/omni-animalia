@@ -72,7 +72,7 @@ const EcranSante = {
 
     const dessin = Graphique.courbePoids(pesees, unite);
     if (dessin) zone.append(el('figure', { class: 'carte figure-graphique' }, dessin,
-      el('figcaption', { class: 'aide', text: pesees.length > 1 ? 'Évolution du poids (' + unite + ')' : 'Ajoutez une deuxième pesée pour voir une courbe.' })));
+      el('figcaption', { class: 'aide', text: pesees.length > 1 ? 'Évolution du poids (' + unite + ')' : 'Ajoute une deuxième pesée pour voir une courbe.' })));
 
     zone.append(el('h3', { class: 'sous-titre', text: 'Historique des pesées' }));
     pesees.forEach((p, i) => {
@@ -152,9 +152,9 @@ const EcranSante = {
       valeurs: vaccin || depart || { date: Dates.aujourdhui() },
       champs: [
         { nom: 'nom', label: 'Nom du vaccin', type: 'texte', requis: true, long: 120, suggestions: this.suggestionsVaccins(a.espece),
-          aide: 'Des noms courants sont proposés pendant la saisie. Rien n’est rempli à votre place : reportez ce qui est écrit sur le carnet ou l’ordonnance.' },
+          aide: 'Des noms courants sont proposés pendant la saisie. Rien n’est rempli à ta place : reporte ce qui est écrit sur le carnet ou l’ordonnance.' },
         { nom: 'date', label: 'Date de la vaccination', type: 'date', requis: true, pasDansFutur: true },
-        { nom: 'rappel', label: 'Date du prochain rappel', type: 'date', aide: 'Celle indiquée par le vétérinaire. Laissez vide si aucun rappel n’est prévu.' },
+        { nom: 'rappel', label: 'Date du prochain rappel', type: 'date', aide: 'Celle indiquée par le vétérinaire. Laisse vide si aucun rappel n’est prévu.' },
         { nom: 'veterinaire', label: 'Vétérinaire', type: 'texte', long: 120, suggestions: vetos },
         { nom: 'lot', label: 'Numéro de lot (facultatif)', type: 'texte', long: 60 },
         { nom: 'note', label: 'Note', type: 'zone' }

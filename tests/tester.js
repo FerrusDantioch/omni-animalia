@@ -416,6 +416,7 @@ lancer('Omni-Animaux', async () => {
     // pendant le test, puis remis exactement comme avant (même en cas d'erreur).
     const fichierSw = path.join(RACINE, 'sw.js');
     const original = fs.readFileSync(fichierSw, 'utf8');
+    const actuel = original.match(/omni-animalia-v\d+/)[0];      // le numéro en cours
     const remettre = () => fs.writeFileSync(fichierSw, original);
     process.once('exit', remettre);
     try {
@@ -424,11 +425,11 @@ lancer('Omni-Animaux', async () => {
       await r.p.waitForSelector('#bandeau-mise-a-jour:not([hidden])', { timeout: 10000 });
       verifier(true, 'le bandeau « Nouvelle version disponible » apparaît');
       const avant = await r.p.evaluate(() => caches.keys());
-      verifier(avant.includes('omni-animalia-v1'), 'l’ancienne version reste en place tant qu’on n’a pas choisi', avant);
+      verifier(avant.includes(actuel), 'l’ancienne version reste en place tant qu’on n’a pas choisi', avant);
       await Promise.all([r.p.waitForEvent('load'), r.p.click('#maj-oui')]);
       await pause(r.p, 1000);
       const apres = await r.p.evaluate(() => caches.keys());
-      verifier(apres.includes('omni-animalia-v999') && !apres.includes('omni-animalia-v1'), '« Mettre à jour » : nouvelle version en place, ancien cache supprimé', apres);
+      verifier(apres.includes('omni-animalia-v999') && !apres.includes(actuel), '« Mettre à jour » : nouvelle version en place, ancien cache supprimé', apres);
     } finally {
       remettre();
     }

@@ -150,7 +150,7 @@ const UI = {
     const nom = (e && e.name) || '';
     const texte = (e && e.message) || '';
     if (nom === 'QuotaExceededError' || /quota/i.test(texte)) {
-      return 'L’espace de stockage du téléphone est plein. Libérez de la place (photos, applications) puis réessayez.';
+      return 'L’espace de stockage du téléphone est plein. Libère de la place (photos, applications) puis réessaie.';
     }
     if (e && e.lisible) return texte;     // message déjà écrit pour la personne
     return 'Une erreur est survenue : l’opération n’a pas été faite. ' + (texte ? '(Détail : ' + texte + ')' : '');
@@ -175,7 +175,7 @@ const UI = {
       if (options.saisie) {
         saisie = el('input', { type: 'text', id: 'dialogue-saisie', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false' });
         corps.append(
-          el('label', { for: 'dialogue-saisie', text: 'Pour confirmer, tapez le mot ' + options.saisie + ' :' }),
+          el('label', { for: 'dialogue-saisie', text: 'Pour confirmer, tape le mot ' + options.saisie + ' :' }),
           saisie
         );
       }
@@ -244,7 +244,7 @@ const UI = {
       let ok = false;
       try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
       zone.remove();
-      this.annoncer(ok ? 'Copié : ' + texte : 'La copie n’a pas fonctionné. Vous pouvez recopier le numéro à la main.', ok ? 'info' : 'erreur');
+      this.annoncer(ok ? 'Copié : ' + texte : 'La copie n’a pas fonctionné. Tu peux recopier le numéro à la main.', ok ? 'info' : 'erreur');
     }
   },
 
@@ -497,7 +497,7 @@ const Formulaire = {
 
       if (champ.requis && vide && champ.type !== 'case') {
         erreurs[champ.nom] = champ.type === 'radios' || champ.type === 'choix'
-          ? 'Choisissez une réponse.' : 'Ce champ est obligatoire.';
+          ? 'Choisis une réponse.' : 'Ce champ est obligatoire.';
         continue;
       }
       if (vide) { if (champ.type === 'nombre') valeurs[champ.nom] = null; continue; }
@@ -509,10 +509,10 @@ const Formulaire = {
         if (!Dates.heureValide(t)) erreurs[champ.nom] = 'Cette heure n’est pas valide (exemple : 14:30).';
       } else if (champ.type === 'nombre') {
         const n = this.lireNombre(t);
-        if (isNaN(n)) erreurs[champ.nom] = 'Tapez un nombre (exemple : 4,5).';
+        if (isNaN(n)) erreurs[champ.nom] = 'Tape un nombre (exemple : 4,5).';
         else if (champ.positif && n <= 0) erreurs[champ.nom] = 'Le nombre doit être plus grand que zéro.';
         else if (n < 0) erreurs[champ.nom] = 'Le nombre ne peut pas être négatif.';
-        else if (champ.entier && !Number.isInteger(n)) erreurs[champ.nom] = 'Tapez un nombre entier (sans virgule).';
+        else if (champ.entier && !Number.isInteger(n)) erreurs[champ.nom] = 'Tape un nombre entier (sans virgule).';
         else if (champ.max !== undefined && n > champ.max) erreurs[champ.nom] = 'Le nombre est trop grand (maximum : ' + UI.nombre(champ.max) + ').';
         else valeurs[champ.nom] = n;
       } else if (champ.type === 'tel') {

@@ -15,8 +15,8 @@ français simple, réponses en français.
 - **Thème Omni-système : valeurs du portfolio, à l'identique** (les mêmes
   qu'Omni-Time). Sombre et Clair = gamme Bleu-gris de Cap/Refuge. `--retard` et
   `--bientot` ont été choisis pour un contraste ≥ 5:1 sur tous les fonds.
-- **Vouvoiement** dans l'application (la phrase d'avertissement imposée est au
-  « vous »).
+- **Tutoiement** dans l'application, comme Refuge, Cap et Omni-Time (demandé
+  par l'auteur en version 1.1.0) ; vouvoiement dans LISEZMOI.md.
 - **Jamais de `innerHTML`** avec du texte saisi : tout passe par `el()` /
   `textContent` (`outil-interface.js`).
 - **Suppressions = fenêtre de confirmation** (`UI.confirmer`), jamais `confirm()`

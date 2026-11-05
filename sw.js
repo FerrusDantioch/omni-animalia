@@ -11,7 +11,7 @@
 /* ⚠️ À augmenter d'un cran (v1 → v2…) à CHAQUE modification d'un fichier
    de la liste FICHIERS ci-dessous (et VERSION dans app.js). Sinon, les
    téléphones qui ont déjà ouvert l'application gardent l'ancienne version. */
-const CACHE = 'omni-animalia-v1';
+const CACHE = 'omni-animalia-v2';
 
 /* Le début du nom de cache propre à Omni-Animaux. Toutes les applications
    de ferrusdantioch.github.io partagent le même espace de caches : on ne

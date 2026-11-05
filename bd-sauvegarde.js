@@ -82,7 +82,7 @@ const Sauvegarde = {
       throw BD.erreur('Ce fichier n’est pas une sauvegarde d’Omni-Animaux.');
     }
     if (typeof objet.versionFormat !== 'number' || objet.versionFormat > this.VERSION_FORMAT) {
-      throw BD.erreur('Cette sauvegarde vient d’une version plus récente d’Omni-Animaux. Mettez l’application à jour, puis réessayez.');
+      throw BD.erreur('Cette sauvegarde vient d’une version plus récente d’Omni-Animaux. Mets l’application à jour, puis réessaie.');
     }
     if (!objet.donnees || typeof objet.donnees !== 'object') throw BD.erreur('Cette sauvegarde est vide ou abîmée.');
 
