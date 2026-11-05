@@ -1,0 +1,54 @@
+{
+  "name": "Omni-Animaux — carnet de santé des animaux",
+  "short_name": "Omni-Animaux",
+  "description": "Le carnet de santé de vos animaux de compagnie : poids, vaccins, vermifuges, traitements, rendez-vous et rappels. Fonctionne hors ligne, sans compte.",
+  "id": "/omni-animalia/",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14111d",
+  "theme_color": "#14111d",
+  "categories": [
+    "health",
+    "lifestyle",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icone.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Rappels",
+      "short_name": "Rappels",
+      "description": "Ouvrir directement la page des rappels",
+      "url": "./index.html#rappels",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

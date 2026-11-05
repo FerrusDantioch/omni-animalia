@@ -1,0 +1,674 @@
+/* Omni-Animaux — © 2026 Ferrus Dantioch
+   Licence : Creative Commons BY-NC-ND 4.0 (texte complet dans le fichier LICENSE)
+   https://creativecommons.org/licenses/by-nc-nd/4.0/ */
+
+/* ============================================================
+   OMNI-ANIMAUX — feuille de style
+   Principes appliqués :
+   - interface calme et prévisible : mêmes places, mêmes formes partout ;
+   - gros boutons (au moins 56 px de haut), textes lisibles ;
+   - aucune animation brusque, aucun clignotement ; le réglage
+     « réduire les animations » du téléphone est respecté ;
+   - contrastes d'au moins 4,5:1 pour tous les textes ;
+   - aucun blanc pur ni noir pur : pas de lumière forte.
+   Les couleurs de chaque thème sont regroupées tout en haut (partie 2).
+   ============================================================ */
+
+
+/* ---------- 1. Polices ----------
+   Les trois polices du thème Omni-système, rangées DANS l'application :
+   elles marchent donc hors ligne. Ce sont les mêmes fichiers que dans
+   Omni-Time et L'Atelier. Licence : SIL Open Font License 1.1
+   (fichier POLICES-OFL.txt). */
+@font-face {
+  font-family: "Oxanium";               /* titres et boutons */
+  src: url("./oxanium.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Literata";              /* texte courant */
+  src: url("./literata.woff2") format("woff2");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";        /* chiffres */
+  src: url("./jetbrains-mono.woff2") format("woff2");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+/* ---------- 2. Thèmes ----------
+   Le thème choisi est posé sur <html> par l'attribut data-theme
+   (« omni », « sombre » ou « clair »). Chaque thème définit les mêmes
+   « variables » (les noms qui commencent par --) : le reste de la
+   feuille de style ne fait que les utiliser.
+   --retard et --bientot : couleurs des rappels en retard / proches
+   (vérifiées : contraste d'au moins 5:1 sur tous les fonds du thème). */
+
+/* Omni-système (thème par défaut) : valeurs reprises À L'IDENTIQUE du
+   portfolio de l'Omni-système (les mêmes que dans Omni-Time). */
+:root,
+html[data-theme="omni"] {
+  --fond:        #14111d;   /* « nuit » : encre violette très sombre */
+  --surface:     #1d1929;   /* « table » : cartes, panneaux */
+  --surface-2:   #251f35;   /* « table haute » : boutons, un cran plus clair */
+  --trait:       #332c47;   /* filets et bordures */
+  --texte:       #e9e4f2;   /* texte principal, jamais blanc pur */
+  --discret:     #a59cbb;   /* texte secondaire */
+  --accent:      #a777ff;   /* violet du logo */
+  --accent-texte:#140d24;   /* texte posé sur un bouton violet */
+  --halo:        #d6c2ff;   /* lueur de l'anneau (focus, liens) */
+  --lien:        #d6c2ff;
+  --retard:      #e0705f;
+  --bientot:     #c9a24a;   /* or « Fantasy » */
+  --danger:      #e0705f;   /* actions qui font perdre quelque chose */
+  --danger-fond: #3a2027;
+  --danger-texte:#e9e4f2;
+
+  --f-titre:     "Oxanium", "Trebuchet MS", system-ui, sans-serif;
+  --f-texte:     "Literata", Georgia, "Times New Roman", serif;
+  --f-chiffres:  "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* Cartes à la façon du portfolio : liseré épais en haut, coins plus
+     arrondis en bas qu'en haut. */
+  --carte-bord:   1px solid #332c47;
+  --carte-lisere: 4px solid #a777ff;
+  --rayon-carte:  6px 6px 14px 14px;
+  --rayon-bouton: 10px;
+
+  color-scheme: dark;
+}
+
+/* Sombre : la gamme « Bleu-gris » de Cap et Refuge, version sombre.
+   Polices du téléphone, comme dans Cap et Refuge. */
+html[data-theme="sombre"] {
+  --fond:        #161b21;
+  --surface:     #1d242d;
+  --surface-2:   #252e39;
+  --trait:       #344050;
+  --texte:       #d4dae0;
+  --discret:     #97a2ae;
+  --accent:      #9dbcd0;
+  --accent-texte:#161b21;
+  --halo:        #9dbcd0;
+  --lien:        #9dbcd0;
+  --retard:      #e3a58f;   /* pêche soutenue */
+  --bientot:     #d4b597;   /* sable */
+  --danger:      #a97f6d;   /* terracotta de Refuge */
+  --danger-fond: #4a3a34;
+  --danger-texte:#f0d9cd;
+
+  --f-titre:     system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-texte:     system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-chiffres:  system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --carte-bord:   1px solid #344050;
+  --carte-lisere: 1px solid #344050;
+  --rayon-carte:  16px;
+  --rayon-bouton: 14px;
+  color-scheme: dark;
+}
+
+/* Clair : la gamme « Bleu-gris » de Cap et Refuge, version claire (fond
+   gris très clair, jamais blanc pur). */
+html[data-theme="clair"] {
+  --fond:        #eef0f2;
+  --surface:     #f7f8f9;
+  --surface-2:   #e9ebee;
+  --trait:       #d7dbe0;
+  --texte:       #3b4046;
+  --discret:     #626870;
+  --accent:      #4f7086;
+  --accent-texte:#f7f8f9;
+  --halo:        #4f7086;
+  --lien:        #3f5c6f;
+  --retard:      #8a4a32;   /* terracotta foncée */
+  --bientot:     #76593b;   /* sable foncé */
+  --danger:      #c08e78;   /* terracotta de Refuge */
+  --danger-fond: #f0dcd2;
+  --danger-texte:#5a3a2c;
+
+  --f-titre:     system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-texte:     system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-chiffres:  system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --carte-bord:   1px solid #d7dbe0;
+  --carte-lisere: 1px solid #d7dbe0;
+  --rayon-carte:  16px;
+  --rayon-bouton: 14px;
+  color-scheme: light;
+}
+
+/* Valeurs communes à tous les thèmes */
+:root {
+  /* Bord des boutons : à mi-chemin entre le texte secondaire et le fond */
+  --bord-bouton: color-mix(in srgb, var(--discret) 45%, var(--fond));
+  --duree: 400ms;            /* toutes les transitions, volontairement lentes */
+  --hauteur-nav: 68px;       /* hauteur de la barre du bas */
+}
+
+
+/* ---------- 3. Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--f-texte);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  -webkit-tap-highlight-color: transparent;
+  /* Place pour la barre du bas (et la zone des gestes d'Android) */
+  padding-bottom: calc(var(--hauteur-nav) + env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+h1, h2, h3 { font-family: var(--f-titre); line-height: 1.2; margin: 0; }
+h1 { font-size: 1.5rem; font-weight: 700; overflow-wrap: anywhere; }
+h2 { font-size: 1.25rem; font-weight: 700; margin: 24px 0 12px; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+h1:focus, h2:focus { outline: none; }   /* le titre reçoit le focus en changeant d'écran */
+p { margin: 6px 0; }
+ul { margin: 6px 0; padding-left: 1.3em; }
+
+a { color: var(--lien); text-underline-offset: 3px; overflow-wrap: anywhere; }
+
+:focus-visible {
+  outline: 3px solid var(--halo);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.discret { color: var(--discret); }
+.petit, small { font-size: 0.9rem; }
+.mono { font-family: var(--f-chiffres); }
+.etiquette {
+  font-family: var(--f-titre);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--discret);
+  margin: 0 0 4px;
+}
+.aide { color: var(--discret); font-size: 0.95rem; margin: 6px 0; }
+.texte-libre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Caché à l'écran, mais lu par les lecteurs d'écran */
+.invisible {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Lien « Aller au contenu » : visible seulement au clavier */
+.lien-evitement {
+  position: absolute;
+  left: 12px; top: -100px;
+  z-index: 100;
+  padding: 12px 16px;
+  background: var(--surface);
+  color: var(--texte);
+  border: 2px solid var(--halo);
+  border-radius: 10px;
+}
+.lien-evitement:focus { top: 12px; }
+
+.marque {
+  font-family: "Oxanium", "Trebuchet MS", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 1.8rem;
+  letter-spacing: 0.02em;
+}
+.marque span { color: var(--accent); }
+
+
+/* ---------- 4. Mise en page générale ---------- */
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px 16px 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.entete {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding-top: env(safe-area-inset-top, 0px);
+  margin-bottom: 8px;
+}
+
+.ecran-plein {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 16px;
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.bloc {
+  padding: 4px 0 12px;
+  border-bottom: 1px solid var(--trait);
+}
+.bloc:last-child { border-bottom: none; }
+
+.encart {
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+}
+.encart.attention { border-left-color: var(--bientot); }
+.encart.erreur { border-left-color: var(--retard); }
+.encart.vide { border-left-color: var(--trait); color: var(--discret); }
+.encart:focus { outline: 3px solid var(--halo); outline-offset: 2px; }
+
+
+/* ---------- 5. Boutons ---------- */
+.bouton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 2px solid var(--bord-bouton);
+  border-radius: var(--rayon-bouton);
+  background: var(--surface-2);
+  color: var(--texte);
+  font-family: var(--f-titre);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--duree), border-color var(--duree);
+}
+.bouton:disabled { opacity: 0.55; cursor: not-allowed; }
+.bouton.principal {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-texte);
+}
+.bouton.danger {
+  background: var(--danger-fond);
+  border-color: var(--danger);
+  color: var(--danger-texte);
+}
+.bouton.danger-discret { border-color: var(--danger); }
+.bouton.large { display: flex; width: 100%; min-height: 60px; margin: 10px 0; }
+.bouton.retour { min-height: 48px; padding: 6px 12px 6px 8px; flex-shrink: 0; }
+.bouton.petit-bouton { min-height: 44px; padding: 4px 12px; font-size: 0.9rem; margin-left: 8px; }
+
+.icone {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rangee-boutons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.rangee-boutons .bouton { flex: 1 1 auto; }
+.pile-boutons { display: grid; gap: 0; margin: 8px 0; }
+
+
+/* ---------- 6. Barre de navigation du bas ---------- */
+#barre-nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--surface);
+  border-top: 1px solid var(--trait);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+#barre-nav button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--hauteur-nav);
+  padding: 6px 2px;
+  border: none;
+  border-top: 3px solid transparent;
+  background: transparent;
+  color: var(--discret);
+  font-family: var(--f-titre);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+#barre-nav button[aria-current="page"] {
+  color: var(--texte);
+  border-top-color: var(--accent);
+  background: var(--surface-2);
+}
+#barre-nav .icone { width: 26px; height: 26px; }
+.nav-icone { display: flex; }
+.pastille {
+  position: absolute;
+  top: 6px;
+  left: calc(50% + 8px);
+  min-width: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  border: 2px solid var(--retard);
+  color: var(--texte);
+  font-family: var(--f-chiffres);
+  font-size: 0.75rem;
+  line-height: 18px;
+}
+
+
+/* ---------- 7. Cartes ---------- */
+.liste-cartes { display: grid; gap: 12px; margin: 12px 0; }
+
+.carte {
+  display: block;
+  width: 100%;
+  margin: 12px 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: var(--texte);
+  border: var(--carte-bord);
+  border-top: var(--carte-lisere);
+  border-radius: var(--rayon-carte);
+  text-align: left;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+.liste-cartes .carte { margin: 0; }
+.carte.termine { border-top: var(--carte-bord); }
+.carte-titre { display: block; font-family: var(--f-titre); font-size: 1.15rem; font-weight: 700; margin: 0 0 4px; }
+.carte-detail { display: block; color: var(--discret); margin: 2px 0; }
+
+/* Carte d'un animal sur l'accueil : toute la carte est un bouton */
+.carte-animal {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 96px;
+  cursor: pointer;
+}
+.carte-texte { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.carte-entete { display: flex; align-items: center; gap: 14px; }
+
+.vignette {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+  border: 2px solid var(--trait);
+}
+.vignette.vide { display: flex; align-items: center; justify-content: center; color: var(--discret); }
+.vignette.vide .icone { width: 36px; height: 36px; }
+.vignette.grande { width: 104px; height: 104px; }
+.vignette.grande.vide .icone { width: 52px; height: 52px; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.badge {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 999px;
+  border: 2px solid var(--trait);
+  background: var(--surface-2);
+  color: var(--texte);
+  font-family: var(--f-titre);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.badge.retard { border-color: var(--retard); }
+.badge.bientot { border-color: var(--bientot); }
+
+.etat.retard { color: var(--retard); font-weight: 600; }
+.etat.bientot { color: var(--bientot); font-weight: 600; }
+
+.ligne { margin: 4px 0; }
+.ligne-libelle { color: var(--discret); }
+
+.chiffre-cle { font-size: 1.15rem; margin: 12px 0; }
+.chiffre-cle strong { font-size: 1.5rem; }
+.sous-titre { margin: 22px 0 6px; color: var(--discret); font-size: 1rem; letter-spacing: 0.02em; }
+
+
+/* ---------- 8. Fiche d'un animal ---------- */
+.resume-animal { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+
+.grille-sections {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.bouton-section {
+  min-height: 52px;
+  padding: 6px 4px;
+  border: 2px solid var(--bord-bouton);
+  border-radius: var(--rayon-bouton);
+  background: var(--surface-2);
+  color: var(--texte);
+  font-family: var(--f-titre);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.15;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.bouton-section[aria-current="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-texte);
+}
+
+/* La courbe de poids */
+.figure-graphique { margin: 12px 0; padding: 10px; }
+.graphique { display: block; width: 100%; height: auto; }
+.graphique .repere { stroke: var(--trait); stroke-width: 1; }
+.graphique .courbe { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.graphique .point { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.graphique .legende { fill: var(--discret); font-family: var(--f-chiffres); font-size: 11px; }
+
+/* Filtre des notes */
+.filtre { margin: 12px 0; padding: 0 12px; border: 1px solid var(--trait); border-radius: 12px; background: var(--surface); }
+.filtre summary { min-height: 52px; display: flex; align-items: center; cursor: pointer; font-family: var(--f-titre); font-weight: 600; }
+.filtre[open] { padding-bottom: 12px; }
+.filtre-champs { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.filtre-champs .champ:last-child { grid-column: 1 / -1; }
+
+
+/* ---------- 9. Formulaires ---------- */
+.formulaire { margin-bottom: 24px; }
+.champ { margin: 18px 0; }
+.champ > label, .etiquette-champ, .champ legend {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--f-titre);
+  font-weight: 600;
+}
+input[type="text"], input[type="date"], input[type="time"], input[type="tel"],
+input[type="password"], select, textarea {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 2px solid var(--bord-bouton);
+  border-radius: 10px;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--f-texte);
+  font-size: 1.05rem;           /* au moins 16 px : le téléphone ne zoome pas */
+}
+textarea { min-height: 110px; resize: vertical; line-height: 1.45; }
+input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--retard); }
+
+.avec-unite { display: flex; align-items: center; gap: 10px; }
+.avec-unite input { flex: 1; }
+.unite { font-family: var(--f-chiffres); font-weight: 600; min-width: 2em; }
+
+fieldset { border: none; margin: 0; padding: 0; min-width: 0; }
+.radio, .case {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 4px 0;
+}
+.radio label, .case label { cursor: pointer; flex: 1; padding: 8px 0; }
+input[type="radio"], input[type="checkbox"] {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.message-erreur { color: var(--retard); font-weight: 600; margin: 6px 0 0; }
+#formulaire-erreurs ul { margin: 4px 0 0; }
+
+.formulaire-boutons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.champ-photo-zone .rangee-boutons .bouton { flex: 1 1 140px; }
+.apercu-photo {
+  display: block;
+  width: 160px;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid var(--trait);
+  margin: 8px 0;
+}
+
+
+/* ---------- 10. Rappels ---------- */
+.groupe-rappels { margin-bottom: 8px; }
+.groupe-rappels h2 { padding-left: 12px; border-left: 4px solid var(--trait); }
+.groupe-rappels.retard h2 { border-left-color: var(--retard); }
+.groupe-rappels.bientot h2 { border-left-color: var(--bientot); }
+.carte-rappel .etiquette { margin: 0; }
+
+
+/* ---------- 11. Bandeaux, fenêtres, messages ---------- */
+.bandeau {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  background: var(--surface);
+  border-bottom: 2px solid var(--accent);
+}
+.bandeau p { margin: 0; text-align: center; }
+
+.dialogue {
+  width: calc(100% - 32px);
+  max-width: 520px;
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  background: var(--surface);
+  color: var(--texte);
+  border: 1px solid var(--trait);
+  border-top: var(--carte-lisere);
+  border-radius: var(--rayon-carte);
+}
+.dialogue::backdrop { background: rgba(8, 6, 12, 0.7); }
+.dialogue-corps { padding: 18px 18px 16px; }
+.dialogue-corps h2 { margin-top: 0; }
+.dialogue-corps label { display: block; margin-top: 12px; font-weight: 600; }
+.dialogue-boutons { display: flex; flex-wrap: wrap-reverse; gap: 10px; margin-top: 18px; }
+.dialogue-boutons .bouton { flex: 1 1 140px; }
+
+.annonce {
+  position: fixed;
+  z-index: 30;
+  left: 16px; right: 16px;
+  bottom: calc(var(--hauteur-nav) + env(safe-area-inset-bottom, 0px) + 12px);
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  color: var(--texte);
+  border: 1px solid var(--trait);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.annonce.erreur { border-left-color: var(--retard); }
+.annonce:empty { display: none; }
+
+/* Écran de verrouillage */
+.verrou-boite { display: grid; gap: 12px; text-align: left; }
+.verrou-boite h1 { text-align: center; margin-bottom: 12px; }
+.verrou-boite label { font-family: var(--f-titre); font-weight: 600; }
+.verrou-boite details { color: var(--discret); }
+.verrou-boite summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; }
+
+.adresse-mail { font-family: var(--f-chiffres); overflow-wrap: anywhere; }
+.lien-tel { margin: 6px 0; }
+
+
+/* ---------- 12. Le carnet de santé : jamais visible à l'écran ---------- */
+#carnet { display: none; }
+
+
+/* ---------- 13. Petits écrans ---------- */
+@media (max-width: 360px) {
+  .grille-sections { grid-template-columns: repeat(2, 1fr); }
+  .formulaire-boutons { grid-template-columns: 1fr; }
+  #barre-nav button { font-size: 0.78rem; }
+}
+
+
+/* ---------- 14. Moins d'animations ----------
+   Si le téléphone demande de réduire les animations, on supprime
+   toute transition (même les plus lentes). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
