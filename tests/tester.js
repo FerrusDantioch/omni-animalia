@@ -404,6 +404,228 @@ lancer('Omni-Animaux', async () => {
     verifier(await p.isVisible('[data-vue="accueil"]'), 'retour : on revient à l’accueil');
   });
 
+  /* ---------- Améliorations de la version 1.2.0 ---------- */
+
+  // Faux menu « Partager » d'Android : on garde les fichiers envoyés
+  async function fauxPartage(refuser) {
+    await p.evaluate((refuser) => {
+      window.__partages = [];
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+      Object.defineProperty(navigator, 'share', { configurable: true, value: async (d) => {
+        if (refuser) { const e = new Error('annulé'); e.name = 'AbortError'; throw e; }
+        const f = d.files[0];
+        window.__partages.push({ nom: f.name, type: f.type, texte: await f.text() });
+      } });
+      window.open = (u) => { window.__ouvert = u; return null; };
+    }, !!refuser);
+  }
+  async function ouvrirAnimal(partie) {
+    await p.click('[data-onglet="accueil"]');
+    await pause(p, 500);
+    await p.click('#accueil-liste .carte-animal');
+    await pause(p, 500);
+    if (partie) { await p.click('[data-section="' + partie + '"]'); await pause(p, 500); }
+  }
+
+  await section('Fichier d’agenda (.ics) et lien Google Agenda', async () => {
+    const r = await p.evaluate(() => {
+      const ics = Agenda.ics([
+        { uid: 'x', titre: 'Rex : vaccin, rappel; test', description: 'ligne1\nligne2', date: '2026-11-25', heure: '17:30' },
+        { uid: 'y', titre: 'Très long titre '.repeat(12) + 'é', date: '2026-12-31', heure: '' }]);
+      return {
+        ics,
+        octets: ics.split('\r\n').map((l) => new TextEncoder().encode(l).length),
+        google: Agenda.lienGoogle({ titre: 'A', date: '2026-11-25', heure: '23:30' }),
+        googleJour: Agenda.lienGoogle({ titre: 'A', date: '2026-12-31', heure: '' })
+      };
+    });
+    verifier(r.ics.startsWith('BEGIN:VCALENDAR\r\n') && r.ics.endsWith('END:VCALENDAR\r\n'), 'fichier .ics bien formé (fins de ligne CRLF)');
+    verifier(r.ics.includes('DTSTART:20261125T173000') && r.ics.includes('DTEND:20261125T183000'), 'rendez-vous à l’heure locale, durée 1 h');
+    verifier(r.ics.includes('DTSTART;VALUE=DATE:20261231') && r.ics.includes('DTEND;VALUE=DATE:20270101'), 'rappel « toute la journée », passage d’année');
+    verifier(r.ics.includes('SUMMARY:Rex : vaccin\\, rappel\\; test') && r.ics.includes('DESCRIPTION:ligne1\\nligne2'), 'caractères spéciaux protégés');
+    verifier(r.ics.includes('TRIGGER:-P1D') && r.ics.includes('TRIGGER:-PT1H'), 'alertes la veille et une heure avant');
+    verifier(Math.max(...r.octets) <= 75, 'lignes de 75 octets au plus', Math.max(...r.octets));
+    verifier(r.google.includes('dates=20261125T233000%2F20261126T003000'), 'Google Agenda : rendez-vous de 23 h 30 qui finit le lendemain', r.google);
+    verifier(r.googleJour.includes('dates=20261231%2F20270101'), 'Google Agenda : journée entière');
+  });
+
+  await section('Sauvegarde partagée (Drive, e-mail…)', async () => {
+    await fauxPartage(false);
+    await p.click('[data-onglet="reglages"]');
+    await pause(p, 500);
+    await p.evaluate(() => BD.definirReglage('derniereSauvegarde', null));
+    await p.click('#bouton-sauvegarder');
+    await p.waitForSelector('#dialogue[open]');
+    await repondre(p, 'Partager');
+    await pause(p, 600);
+    const envoi = await p.evaluate(() => window.__partages[0]);
+    verifier(envoi && /^omni-animaux-sauvegarde-.*\.json$/.test(envoi.nom) && JSON.parse(envoi.texte).format === 'omni-animaux-sauvegarde', 'le fichier de sauvegarde part dans le menu Partager', envoi && envoi.nom);
+    verifier(await p.evaluate(async () => (await BD.reglage('derniereSauvegarde')) === Dates.aujourdhui()), 'date de dernière sauvegarde mise à jour');
+    await fauxPartage(true);
+    await p.evaluate(() => BD.definirReglage('derniereSauvegarde', '2020-01-01'));
+    await p.click('#bouton-sauvegarder');
+    await p.waitForSelector('#dialogue[open]');
+    await repondre(p, 'Partager');
+    await pause(p, 600);
+    verifier((await texte(p, '#annonce')).includes('Partage annulé'), 'menu fermé sans choisir : message clair');
+    verifier(await p.evaluate(async () => (await BD.reglage('derniereSauvegarde')) === '2020-01-01'), 'partage annulé : pas compté comme une sauvegarde');
+  });
+
+  await section('Rendez-vous : frais par année et ajout à l’agenda', async () => {
+    await fauxPartage(false);
+    await ouvrirAnimal('rdv');
+    const anneeDerniere = (new Date().getFullYear() - 1) + '-06-15';
+    const demain = await p.evaluate(() => Dates.ajouterJours(Dates.aujourdhui(), 1));
+    for (const [date, heure, motif, cout] of [[anneeDerniere, '09:00', 'Vaccins', '40'], [demain, '17:30', 'Contrôle', '25,5']]) {
+      await p.click('#animal-contenu button.principal');
+      await pause(p);
+      await remplir(p, 'date', date);
+      await remplir(p, 'heure', heure);
+      await remplir(p, 'motif', motif);
+      await remplir(p, 'veterinaire', 'Dr Durand');
+      await remplir(p, 'cout', cout);
+      await enregistrer(p);
+    }
+    const frais = await texte(p, '#animal-contenu .encart.frais');
+    verifier(frais.includes(String(new Date().getFullYear() - 1) + ' : 40,00 €') && frais.includes('Total : 65,50 €'), 'frais par année et total', frais);
+    await p.locator('#animal-contenu button', { hasText: 'Ajouter à l’agenda' }).first().click();
+    await p.waitForSelector('#dialogue[open]');
+    await repondre(p, 'Fichier d’agenda');
+    await pause(p, 500);
+    const ics = await p.evaluate(() => window.__partages.find((x) => x.nom.endsWith('.ics')));
+    verifier(ics && ics.type === 'text/calendar' && ics.texte.includes('T173000') && ics.texte.includes('Contrôle'), 'fichier d’agenda du rendez-vous partagé', ics && ics.nom);
+    await p.locator('#animal-contenu button', { hasText: 'Ajouter à l’agenda' }).first().click();
+    await p.waitForSelector('#dialogue[open]');
+    await repondre(p, 'Google Agenda');
+    const lien = await p.evaluate(() => window.__ouvert || '');
+    verifier(lien.startsWith('https://calendar.google.com/calendar/render?action=TEMPLATE'), 'lien Google Agenda préparé');
+  });
+
+  await section('Médicaments : cocher chaque prise', async () => {
+    await ouvrirAnimal('traitements');
+    await p.click('#animal-contenu button.principal');
+    await pause(p);
+    await remplir(p, 'nom', 'Antibiotique');
+    await remplir(p, 'prisesParJour', '2');
+    await enregistrer(p);
+    const prises = () => texte(p, '#animal-contenu .encart.prises');
+    verifier((await prises()).includes('aucune prise notée sur 2'), 'au départ : aucune prise', await prises());
+    for (let i = 0; i < 2; i++) {
+      await p.locator('#animal-contenu button', { hasText: 'Noter une prise maintenant' }).click();
+      await pause(p, 600);
+    }
+    verifier((await prises()).includes('2 prises sur 2') && (await prises()).includes('Toutes les prises du jour'), 'deux prises notées, avec l’heure', await prises());
+    await p.locator('#animal-contenu button', { hasText: 'Noter une prise maintenant' }).click();
+    await p.waitForSelector('#dialogue[open]');
+    verifier((await texte(p, '#dialogue')).includes('déjà notées'), 'une prise de trop : avertissement (double dose)');
+    await repondre(p, 'Ne rien noter');
+    verifier((await prises()).includes('2 prises sur 2'), '« Ne rien noter » : rien n’est ajouté');
+    await p.locator('#animal-contenu button', { hasText: 'Annuler la dernière prise' }).click();
+    await repondre(p, 'Retirer la prise');
+    await pause(p, 400);
+    verifier((await prises()).includes('1 prise sur 2'), 'dernière prise annulée', await prises());
+    await p.click('[data-onglet="rappels"]');
+    await pause(p, 600);
+    verifier((await texte(p, '#rappels-liste')).includes('Médicaments du jour (1)'), 'la page Rappels montre les médicaments du jour');
+    await p.locator('#rappels-liste .medicaments button', { hasText: 'Noter une prise maintenant' }).click();
+    await pause(p, 600);
+    verifier((await texte(p, '#rappels-liste .medicaments')).includes('2 prises sur 2'), 'prise notée depuis la page Rappels');
+    await fauxPartage(false);
+    await p.click('#bouton-agenda-tout');
+    await pause(p, 500);
+    const tout = await p.evaluate(() => window.__partages.find((x) => x.nom.startsWith('omni-animaux-rappels')));
+    verifier(tout && (tout.texte.match(/BEGIN:VEVENT/g) || []).length >= 1, 'tous les rappels à venir dans un seul fichier d’agenda', tout && tout.nom);
+  });
+
+  await section('Documents joints aux notes', async () => {
+    await ouvrirAnimal('notes');
+    await p.click('#animal-contenu button.principal');
+    await pause(p);
+    await remplir(p, 'texte', '');
+    await enregistrer(p);
+    verifier((await texte(p, '[data-champ="texte"] .message-erreur')).includes('joins au moins un document'), 'note vide sans document : refusée');
+    const image = await p.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 3000; c.height = 2000;
+      const x = c.getContext('2d'); x.fillStyle = '#ddd'; x.fillRect(0, 0, 3000, 2000); x.fillStyle = '#222'; x.font = '80px serif'; x.fillText('Ordonnance', 100, 200);
+      return c.toDataURL('image/png').split(',')[1];
+    });
+    const buffer = Buffer.from(image, 'base64');
+    const champs = await p.$$('[data-champ="pieces"] input[type=file]');
+    await champs[1].setInputFiles([{ name: 'a.png', mimeType: 'image/png', buffer }, { name: 'b.png', mimeType: 'image/png', buffer }]);
+    await p.waitForFunction(() => document.querySelectorAll('[data-champ="pieces"] .vignette-document').length === 2);
+    const taille = await p.evaluate(() => new Promise((ok) => {
+      const i = new Image(); i.onload = () => ok([i.width, i.height]); i.src = JSON.parse(document.querySelector('[name="pieces"]').value)[0];
+    }));
+    verifier(taille[0] === 1600 && taille[1] === 1067, 'document gardé lisible : 1600 pixels de large', taille);
+    await p.locator('[data-champ="pieces"] button', { hasText: 'Retirer' }).nth(1).click();
+    verifier((await p.$$('[data-champ="pieces"] .vignette-document')).length === 1, 'un document peut être retiré avant d’enregistrer');
+    await enregistrer(p);
+    verifier((await p.$$('#animal-contenu .vignette-document')).length === 1, 'le document apparaît dans la note');
+    await p.click('#animal-contenu .vignette-document');
+    await pause(p, 300);
+    verifier(await p.isVisible('#visionneuse[open] .image-visionneuse'), 'toucher la vignette : document en grand');
+    await p.locator('#visionneuse button', { hasText: 'Fermer' }).click();
+    const sauv = await p.evaluate(async () => {
+      const s = await Sauvegarde.preparer();
+      const avecPiece = s.donnees.notes.filter((n) => n.pieces).length;
+      const pirate = JSON.parse(JSON.stringify(s));
+      pirate.donnees.notes.find((n) => n.pieces).pieces = ['https://exemple.invalid/x.jpg'];
+      let refuse = false;
+      try { Sauvegarde.valider(pirate); } catch (e) { refuse = e.message.includes('document'); }
+      return { avecPiece, refuse };
+    });
+    verifier(sauv.avecPiece === 1, 'le document est inclus dans la sauvegarde');
+    verifier(sauv.refuse, 'sauvegarde contenant une adresse internet à la place d’une image : refusée');
+  });
+
+  await section('Fiche de garde', async () => {
+    await ouvrirAnimal('identite');
+    await p.locator('#animal-contenu button', { hasText: 'Fiche de garde' }).click();
+    await pause(p, 600);
+    verifier(p.url().includes('#garde/'), 'écran « Fiche de garde » ouvert', p.url());
+    verifier((await texte(p, '#garde-contenu')).includes('Médicaments en cours') && (await texte(p, '#garde-contenu')).includes('Antibiotique'), 'les médicaments en cours y figurent');
+    await p.locator('#garde-contenu button', { hasText: 'Ajouter mon contact' }).click();
+    await pause(p);
+    await remplir(p, 'nom', 'Ferrus');
+    await remplir(p, 'telephone', '06 00 00 00 00');
+    await enregistrer(p);
+    await p.locator('#garde-contenu button', { hasText: 'Ajouter des consignes' }).click();
+    await pause(p);
+    await remplir(p, 'consignesGarde', 'Ne sort jamais seul.');
+    await enregistrer(p);
+    const fiche = await texte(p, '#garde-contenu');
+    verifier(fiche.includes('Propriétaire : Ferrus') && fiche.includes('Ne sort jamais seul.'), 'contact du propriétaire et consignes affichés', fiche.slice(0, 200));
+    verifier((await p.getAttribute('#garde-contenu a.lien-tel', 'href')) === 'tel:0600000000', 'numéro à appeler en un toucher');
+    await p.evaluate(() => { window.__imprime = 0; window.print = () => { window.__imprime++; }; });
+    await p.locator('#garde-contenu button', { hasText: 'Imprimer' }).click();
+    await pause(p, 400);
+    verifier(await p.evaluate(() => window.__imprime === 1 && document.querySelector('#carnet .fiche-garde') !== null), 'fiche de garde imprimable');
+    verifier(await p.evaluate(() => document.querySelectorAll('#carnet a').length === 0), 'sur papier, le téléphone est écrit en clair (pas de bouton)');
+    await p.goBack();
+    await pause(p, 500);
+    verifier(await p.isVisible('[data-vue="animal"]'), 'retour : on revient à la fiche de l’animal');
+  });
+
+  await section('Taille du texte', async () => {
+    await p.click('[data-onglet="reglages"]');
+    await pause(p, 500);
+    await p.check('input[name="reglage-taille"][value="tresgrand"]');
+    await pause(p, 300);
+    const t = await p.evaluate(() => ({ attr: document.documentElement.dataset.taille, px: getComputedStyle(document.documentElement).fontSize, memo: localStorage.getItem('omnianimaux_taille') }));
+    verifier(t.attr === 'tresgrand' && t.px === '20px' && t.memo === 'tresgrand', 'très grand texte appliqué et mémorisé', t);
+    const debords = [];
+    for (const [onglet, partie] of [['accueil'], ['rappels'], ['veterinaires'], ['reglages'], ['accueil', 'identite'], ['accueil', 'traitements'], ['accueil', 'notes']]) {
+      if (partie) await ouvrirAnimal(partie);
+      else { await p.click('[data-onglet="' + onglet + '"]'); await pause(p, 500); }
+      const d = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      if (d > 0) debords.push((partie || onglet) + ' : ' + d);
+    }
+    verifier(debords.length === 0, 'aucun écran ne déborde sur le côté en très grand texte', debords);
+    await p.click('[data-onglet="reglages"]');
+    await pause(p, 500);
+    await p.check('input[name="reglage-taille"][value="normal"]');
+  });
+
   await ctx.close();
 
   await section('Nouvelle version : proposée, jamais imposée', async () => {

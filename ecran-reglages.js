@@ -4,7 +4,7 @@
 
 /* ============================================================
    ECRAN-REGLAGES — thème, unité de poids, sauvegarde et restauration,
-   mot de passe, exemple de démonstration, suppression de tout.
+   taille du texte, mot de passe, exemple de démonstration, suppression de tout.
    (La page « À propos » est écrite directement dans index.html.)
    ============================================================ */
 'use strict';
@@ -31,6 +31,7 @@ const EcranReglages = {
   async afficher() {
     const zone = vider($('#reglages-contenu'));
     const theme = await BD.reglage('theme', 'omni');
+    const taille = await BD.reglage('taille', 'normal');
     const unite = await BD.reglage('unitePoids', 'kg');
     const derniere = await BD.reglage('derniereSauvegarde', null);
     const mdp = await Verrou.actif();
@@ -45,6 +46,15 @@ const EcranReglages = {
       ], theme, async (t) => {
         Theme.appliquer(t);
         await BD.definirReglage('theme', t);
+      }),
+      el('h3', { class: 'sous-titre', text: 'Taille du texte' }),
+      this.radios('taille', 'Taille du texte', [
+        { valeur: 'normal', texte: 'Normale' },
+        { valeur: 'grand', texte: 'Grande' },
+        { valeur: 'tresgrand', texte: 'Très grande' }
+      ], taille, async (z) => {
+        Taille.appliquer(z);
+        await BD.definirReglage('taille', z);
       })));
 
     // 2. Unité de poids
@@ -130,12 +140,38 @@ const EcranReglages = {
 
   afficherApropos() { /* tout est déjà écrit dans index.html */ },
 
-  /* ---------- Sauvegarde ---------- */
+  /* ---------- Sauvegarde ----------
+     Si le téléphone sait partager un fichier, on propose :
+     - Partager : Drive, messagerie, e-mail à soi-même… (la sauvegarde
+       quitte le téléphone : elle survit à sa perte) ;
+     - Télécharger : le fichier va dans « Téléchargements ». */
   async sauvegarder() {
     try {
-      const r = await Sauvegarde.exporter();
+      let mode = 'telecharger';
+      if (Partage.possible(new File(['{}'], 'essai.json', { type: 'application/json' }))) {
+        mode = await UI.choisir({
+          titre: 'Sauvegarder toutes mes données',
+          message: [
+            'Partager : envoie le fichier vers Google Drive, ta messagerie, ou un e-mail à toi-même. Conseillé : la sauvegarde est alors à l’abri, hors du téléphone.',
+            'Télécharger : range le fichier dans « Téléchargements », sur ce téléphone.'
+          ],
+          choix: [
+            { valeur: null, texte: 'Annuler' },
+            { valeur: 'telecharger', texte: 'Télécharger' },
+            { valeur: 'partager', texte: 'Partager', principal: true }
+          ]
+        });
+        if (!mode) return;
+      }
+      const r = await Sauvegarde.exporter(mode);
+      if (r.resultat === 'annule') {
+        UI.annoncer('Partage annulé : la sauvegarde n’a été envoyée nulle part.');
+        return;
+      }
       const taille = r.taille > 1024 * 1024 ? UI.nombre(r.taille / (1024 * 1024), 1) + ' Mo' : UI.nombre(Math.ceil(r.taille / 1024), 0) + ' Ko';
-      UI.annoncer('Sauvegarde créée : « ' + r.nom + ' » (' + taille + '). Elle se trouve en général dans « Téléchargements ».');
+      UI.annoncer(r.resultat === 'partage'
+        ? 'Sauvegarde envoyée : « ' + r.nom + ' » (' + taille + ').'
+        : 'Sauvegarde créée : « ' + r.nom + ' » (' + taille + '). Elle se trouve en général dans « Téléchargements ».');
       if (Nav.etat && Nav.etat.vue === 'reglages') await this.afficher();
       if (Nav.etat && Nav.etat.vue === 'accueil') await EcranAccueil.afficher();
     } catch (e) {
@@ -178,6 +214,7 @@ const EcranReglages = {
     try {
       const res = await Sauvegarde.importer(lu, mode);
       if (lu.reglages.theme) Theme.appliquer(lu.reglages.theme);
+      if (lu.reglages.taille) Taille.appliquer(lu.reglages.taille);
       let message = 'Restauration terminée (' + res.ajoutees + ' fiche(s)).';
       if (res.ecartees) message += ' ' + res.ecartees + ' fiche(s) sans animal ont été ignorées.';
       UI.annoncer(message);
@@ -279,6 +316,7 @@ const EcranReglages = {
       await BD.definirReglage('avertissementVu', true);
       await BD.definirReglage('debutSuivi', Dates.aujourdhui());
       Theme.appliquer('omni');
+      Taille.appliquer('normal');
       UI.annoncer('Toutes les données ont été supprimées.');
       await this.afficher();
       Nav.majPastille();

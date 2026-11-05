@@ -2,13 +2,16 @@
 
 **Le carnet de santé de vos animaux de compagnie**, sous forme d'application web
 installable (PWA) : identité, poids (avec courbe), vaccins, vermifuges et
-antiparasitaires, traitements, rendez-vous vétérinaires, notes de santé,
-alimentation, choses à faire et page de rappels.
+antiparasitaires, traitements (avec chaque prise cochée), rendez-vous
+vétérinaires et frais, notes de santé avec documents joints, alimentation,
+choses à faire, page de rappels, fiche de garde, et ajout des rappels à
+l'agenda du téléphone.
 
 - Fonctionne **entièrement hors ligne**, sans compte, sans serveur, sans publicité.
 - Les données restent **uniquement sur l'appareil** (base IndexedDB du navigateur).
   Pensez à faire des sauvegardes (Réglages → Sauvegarder toutes mes données).
 - Aucune notification : les rappels s'affichent à l'ouverture de l'application.
+  Pour être prévenu à l'heure, « Ajouter à l'agenda » les confie à l'agenda du téléphone.
 
 > Cette application sert à organiser vos informations. Elle ne remplace pas l'avis
 > d'un vétérinaire.
@@ -34,9 +37,10 @@ les envoyer depuis un téléphone. Leur nom indique leur rôle.
 | `outil-photo.js` | réduction automatique des photos |
 | `outil-graphique.js` | la courbe de poids (dessin SVG) |
 | `outil-rappels.js` | le calcul des rappels |
+| `outil-partage.js` | le menu « Partager » d'Android et l'ajout à l'agenda (fichier .ics, Google Agenda) |
 | `bd-base.js` | la base de données (IndexedDB) |
 | `bd-sauvegarde.js` | sauvegarde, restauration, exemple de démonstration |
-| `ecran-*.js` | les écrans : accueil, fiche d'un animal, santé, agenda, vétérinaires, réglages |
+| `ecran-*.js` | les écrans : accueil, fiche d'un animal, santé, agenda, vétérinaires, fiche de garde, réglages |
 | `sw.js` | le « service worker » : le fonctionnement hors ligne et les mises à jour |
 | `manifest.json` | la carte d'identité de l'application installable |
 | `icone.svg`, `icon-192.png`, `icon-512.png`, `maskable-512.png` | les icônes |

@@ -27,7 +27,8 @@
    Sert à « nettoyer » une fiche (garder seulement les champs connus, du
    bon type), en particulier quand on importe une sauvegarde.
    Types : t = texte, d = date AAAA-MM-JJ, h = heure HH:MM, n = nombre,
-           b = oui/non, photo = image, ou une liste de valeurs permises. */
+           b = oui/non, photo = image, photos = liste d'images (documents),
+           prises = prises de médicament par jour, ou une liste de valeurs permises. */
 const SCHEMAS = {
   animaux: {
     id: 't', nom: 't', espece: 't', race: 't', sexe: ['', 'male', 'femelle', 'inconnu'],
@@ -36,14 +37,15 @@ const SCHEMAS = {
     unitePoids: ['kg', 'g'], vetoId: 't',
     archive: 'b', motifArchive: 't', dateArchive: 'd',
     alimMarque: 't', alimQuantite: 't', alimRepas: 'n', alimRemarques: 't', alimEviter: 't',
+    consignesGarde: 't',
     exemple: 'b', creeLe: 'd'
   },
   pesees:           { id: 't', animalId: 't', date: 'd', grammes: 'n', note: 't', exemple: 'b' },
   vaccins:          { id: 't', animalId: 't', nom: 't', date: 'd', rappel: 'd', veterinaire: 't', lot: 't', note: 't', exemple: 'b' },
   antiparasitaires: { id: 't', animalId: 't', type: ['vermifuge', 'anti-puces', 'anti-tiques', 'autre'], produit: 't', date: 'd', prochaine: 'd', dose: 't', note: 't', exemple: 'b' },
-  traitements:      { id: 't', animalId: 't', nom: 't', dose: 't', frequence: 't', debut: 'd', fin: 'd', statut: ['en-cours', 'termine'], note: 't', exemple: 'b' },
+  traitements:      { id: 't', animalId: 't', nom: 't', dose: 't', frequence: 't', debut: 'd', fin: 'd', statut: ['en-cours', 'termine'], prisesParJour: 'n', prises: 'prises', note: 't', exemple: 'b' },
   rdv:              { id: 't', animalId: 't', date: 'd', heure: 'h', motif: 't', veterinaire: 't', compteRendu: 't', cout: 'n', exemple: 'b' },
-  notes:            { id: 't', animalId: 't', date: 'd', categorie: ['symptome', 'observation', 'examen', 'allergie', 'antecedent', 'autre'], texte: 't', exemple: 'b' },
+  notes:            { id: 't', animalId: 't', date: 'd', categorie: ['symptome', 'observation', 'examen', 'allergie', 'antecedent', 'autre'], texte: 't', pieces: 'photos', exemple: 'b' },
   taches:           { id: 't', animalId: 't', titre: 't', echeance: 'd', recN: 'n', recUnite: ['', 'jours', 'semaines', 'mois', 'ans'], recJour: 'n', fait: 'b', faitLe: 'd', suivanteId: 't', note: 't', exemple: 'b' },
   veterinaires:     { id: 't', nom: 't', clinique: 't', telephone: 't', adresse: 't', notes: 't', exemple: 'b' }
 };
@@ -56,10 +58,17 @@ const OBLIGATOIRES = {
   antiparasitaires: ['id', 'animalId', 'type', 'date'],
   traitements: ['id', 'animalId', 'nom'],
   rdv: ['id', 'animalId', 'date'],
-  notes: ['id', 'animalId', 'date', 'texte'],
+  notes: ['id', 'animalId', 'date'],
   taches: ['id', 'animalId', 'titre'],
   veterinaires: ['id', 'nom']
 };
+
+/* Une image enregistrée : seules les vraies images encodées sont acceptées
+   (jamais une adresse internet), et pas plus de 8 millions de caractères. */
+function imageValide(v) {
+  return typeof v === 'string' && v.length <= 8000000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v);
+}
+const MAX_PIECES = 6;          // documents joints au plus par note
 
 /* Les magasins dont chaque fiche appartient à un animal */
 const MAGASINS_LIES = ['pesees', 'vaccins', 'antiparasitaires', 'traitements', 'rdv', 'notes', 'taches'];
@@ -93,11 +102,23 @@ function nettoyerFiche(magasin, fiche) {
       if (typeof v !== 'boolean') throw new Error('« ' + champ + ' » devrait valoir vrai ou faux');
       propre[champ] = v;
     } else if (type === 'photo') {
-      // Seules les vraies images encodées sont acceptées (jamais une adresse internet)
-      if (typeof v !== 'string' || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v) || v.length > 8000000) {
-        throw new Error('photo illisible');
-      }
+      if (!imageValide(v)) throw new Error('photo illisible');
       propre[champ] = v;
+    } else if (type === 'photos') {
+      // Liste de documents (photos d'ordonnance, de résultats…)
+      if (!Array.isArray(v) || v.length > MAX_PIECES || !v.every(imageValide)) throw new Error('document joint illisible');
+      if (v.length) propre[champ] = v.slice();
+    } else if (type === 'prises') {
+      // { 'AAAA-MM-JJ': ['08:10', '20:05'], … } : les heures des prises de chaque jour
+      if (typeof v !== 'object' || Array.isArray(v)) throw new Error('prises illisibles');
+      const prises = {};
+      for (const [jour, heures] of Object.entries(v)) {
+        if (!Dates.estValide(jour) || !Array.isArray(heures) || heures.length > 48 || !heures.every((h) => Dates.heureValide(h))) {
+          throw new Error('prises illisibles');
+        }
+        if (heures.length) prises[jour] = heures.slice();
+      }
+      if (Object.keys(prises).length) propre[champ] = prises;
     }
   }
   for (const champ of OBLIGATOIRES[magasin]) {

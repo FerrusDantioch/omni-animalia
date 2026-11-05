@@ -31,27 +31,36 @@ const Sauvegarde = {
       exporteLe: new Date().toISOString(),
       reglages: {
         theme: await BD.reglage('theme', 'omni'),
-        unitePoids: await BD.reglage('unitePoids', 'kg')
+        taille: await BD.reglage('taille', 'normal'),
+        unitePoids: await BD.reglage('unitePoids', 'kg'),
+        contactGarde: await BD.reglage('contactGarde', null)
       },
       donnees
     };
   },
 
-  /* Fabrique le fichier et le propose au téléchargement */
-  async exporter() {
+  /* Fabrique le fichier de sauvegarde (sans l'envoyer nulle part) */
+  async fichier() {
     const contenu = await this.preparer();
-    const texte = JSON.stringify(contenu);
-    const blob = new Blob([texte], { type: 'application/json' });
     const nom = 'omni-animaux-sauvegarde-' + Dates.aujourdhui() + '.json';
-    const url = URL.createObjectURL(blob);
-    const lien = el('a', { href: url, download: nom, class: 'invisible' });
-    document.body.append(lien);
-    lien.click();
-    lien.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    await BD.definirReglage('derniereSauvegarde', Dates.aujourdhui());
-    const nb = contenu.donnees.animaux.length;
-    return { nom, taille: blob.size, nb };
+    return new File([JSON.stringify(contenu)], nom, { type: 'application/json' });
+  },
+
+  /* Fabrique le fichier, puis le partage (mode « partager » : Drive,
+     e-mail…) ou le télécharge (mode « telecharger »).
+     Renvoie { nom, taille, resultat } ; resultat vaut 'partage',
+     'telecharge' ou 'annule' (menu de partage fermé sans choisir). */
+  async exporter(mode) {
+    const f = await this.fichier();
+    let resultat;
+    if (mode === 'partager') {
+      resultat = await Partage.envoyer(f, 'Sauvegarde Omni-Animaux');
+    } else {
+      Partage.telecharger(f);
+      resultat = 'telecharge';
+    }
+    if (resultat !== 'annule') await BD.definirReglage('derniereSauvegarde', Dates.aujourdhui());
+    return { nom: f.name, taille: f.size, resultat };
   },
 
   /* ---------- Importer ---------- */
@@ -107,6 +116,11 @@ const Sauvegarde = {
     const r = objet.reglages || {};
     if (['omni', 'sombre', 'clair'].includes(r.theme)) reglages.theme = r.theme;
     if (['kg', 'g'].includes(r.unitePoids)) reglages.unitePoids = r.unitePoids;
+    if (['normal', 'grand', 'tresgrand'].includes(r.taille)) reglages.taille = r.taille;
+    const c = r.contactGarde;
+    if (c && typeof c === 'object' && typeof (c.nom || '') === 'string' && typeof (c.telephone || '') === 'string') {
+      reglages.contactGarde = { nom: (c.nom || '').slice(0, 120), telephone: (c.telephone || '').slice(0, 30) };
+    }
 
     const resume = {
       animaux: donnees.animaux.length,
@@ -170,6 +184,7 @@ const Sauvegarde = {
       unitePoids: 'kg', vetoId: veto.id, archive: false,
       alimMarque: 'Croquettes adulte (exemple)', alimQuantite: '280 g', alimRepas: 2,
       alimRemarques: 'Eau fraîche à volonté.', alimEviter: 'Chocolat, raisin, oignon.',
+      consignesGarde: 'Deux promenades par jour (matin et soir), toujours en laisse près de la route. Dort dans son panier dans l’entrée. (exemple)',
       exemple: true, creeLe: Dates.aujourdhui()
     };
     const chat = {
@@ -204,10 +219,11 @@ const Sauvegarde = {
         { animalId: chat.id, type: 'vermifuge', produit: 'Pâte vermifuge (exemple)', date: j(-15), prochaine: j(0), dose: '1 graduation' }
       ],
       traitements: [
-        { animalId: chien.id, nom: 'Anti-inflammatoire (exemple)', dose: '1 comprimé', frequence: 'Une fois par jour, au repas', debut: j(-3), fin: j(4), statut: 'en-cours' },
+        { animalId: chien.id, nom: 'Anti-inflammatoire (exemple)', dose: '1 comprimé', frequence: 'Matin et soir, au repas', debut: j(-3), fin: j(4), statut: 'en-cours', prisesParJour: 2 },
         { animalId: chat.id, nom: 'Collyre (exemple)', dose: '1 goutte', frequence: 'Matin et soir', debut: j(-30), fin: j(-23), statut: 'termine' }
       ],
       rdv: [
+        { animalId: chien.id, date: j(-400), heure: '09:00', motif: 'Vaccins (exemple)', veterinaire: veto.nom, compteRendu: 'RAS.', cout: 72.5 },
         { animalId: chien.id, date: j(-60), heure: '10:30', motif: 'Visite annuelle (exemple)', veterinaire: veto.nom, compteRendu: 'Bon état général.', cout: 55 },
         { animalId: chat.id, date: j(20), heure: '17:00', motif: 'Consultation stérilisation (exemple)', veterinaire: veto.nom }
       ],

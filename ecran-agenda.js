@@ -19,6 +19,30 @@ const UNITES_RECURRENCE = [
 
 const EcranAgenda = {
 
+  /* Le lieu d'un rendez-vous : la clinique et l'adresse du vétérinaire
+     enregistré sous ce nom (s'il existe). */
+  lieu(nomVeto, vetos) {
+    if (!nomVeto) return '';
+    const v = vetos.find((x) => x.nom.trim().toLowerCase() === nomVeto.trim().toLowerCase());
+    if (!v) return '';
+    return [v.clinique, (v.adresse || '').replace(/\s*\n\s*/g, ', ')].filter(Boolean).join(', ');
+  },
+
+  /* Les frais vétérinaires notés (coût des rendez-vous), par année */
+  blocFrais(rdvs) {
+    const avecCout = rdvs.filter((r) => typeof r.cout === 'number');
+    if (!avecCout.length) return null;
+    const parAn = {};
+    for (const r of avecCout) parAn[r.date.slice(0, 4)] = (parAn[r.date.slice(0, 4)] || 0) + r.cout;
+    const total = avecCout.reduce((s, r) => s + r.cout, 0);
+    const annees = Object.keys(parAn).sort().reverse();
+    return el('div', { class: 'encart frais' },
+      el('p', { class: 'etiquette', text: 'Frais vétérinaires notés' }),
+      annees.map((an) => el('p', { class: 'ligne' }, el('span', { class: 'ligne-libelle', text: an + ' : ' }), el('span', { class: 'mono', text: UI.euros(parAn[an]) }))),
+      annees.length > 1 ? el('p', { class: 'ligne' }, el('strong', { text: 'Total : ' }), el('strong', { class: 'mono', text: UI.euros(total) })) : null,
+      el('p', { class: 'aide', text: 'Calculé à partir du coût noté dans chaque rendez-vous (' + avecCout.length + ' sur ' + rdvs.length + ').' }));
+  },
+
   /* ---------- Rendez-vous vétérinaires ---------- */
   async rdv(zone, a) {
     const tous = await BD.parAnimal('rdv', a.id);
@@ -28,6 +52,9 @@ const EcranAgenda = {
     const passes = tous.filter((r) => r.date < aujourdhui).sort((x, y) => (cle(x) < cle(y) ? 1 : -1));
     EcranAnimal.entete(zone, 'Rendez-vous vétérinaires', 'Ajouter un rendez-vous', () => this.formulaireRdv(a, null));
     if (!tous.length) return EcranAnimal.message(zone, 'Aucun rendez-vous enregistré.');
+    const vetos = await BD.tout('veterinaires');
+    const frais = this.blocFrais(tous);
+    if (frais) zone.append(frais);
 
     const carte = (r, passe) => EcranAnimal.carteFiche({
       titre: Dates.frHeure(r.date, r.heure) + (r.motif ? ' — ' + r.motif : ''),
@@ -37,8 +64,13 @@ const EcranAgenda = {
         EcranAnimal.ligne('Vétérinaire', r.veterinaire),
         EcranAnimal.ligne('Compte rendu', r.compteRendu),
         EcranAnimal.ligne('Coût', typeof r.cout === 'number' ? UI.euros(r.cout) : '')],
-      autres: passe && !r.compteRendu && !a.archive
-        ? bouton('Ajouter le compte rendu', () => this.formulaireRdv(a, r), { classe: 'secondaire', icone: 'crayon' }) : null,
+      autres: a.archive ? null : (passe
+        ? (!r.compteRendu ? bouton('Ajouter le compte rendu', () => this.formulaireRdv(a, r), { classe: 'secondaire', icone: 'crayon' }) : null)
+        : bouton('Ajouter à l’agenda', () => Agenda.proposer({
+          uid: r.id, titre: a.nom + ' : rendez-vous vétérinaire' + (r.motif ? ' (' + r.motif + ')' : ''),
+          description: [r.veterinaire ? 'Vétérinaire : ' + r.veterinaire : '', 'Ajouté depuis Omni-Animaux.'].filter(Boolean).join('\n'),
+          lieu: this.lieu(r.veterinaire, vetos), date: r.date, heure: r.heure || ''
+        }), { classe: 'secondaire', icone: 'cloche' })),
       modifier: a.archive ? null : () => this.formulaireRdv(a, r),
       supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('rdv', r, 'Rendez-vous du ' + Dates.fr(r.date))
     });
@@ -214,7 +246,28 @@ const EcranAgenda = {
       zone.append(el('p', { class: 'encart vide', text: 'Aucun animal pour l’instant : aucun rappel.' }));
       return;
     }
-    const g = Rappels.grouper(Rappels.calculer(d));
+    this._vetos = d.veterinaires;
+
+    // Médicaments du jour : les traitements en cours avec « prises par jour »
+    const aujourdhui = Dates.aujourdhui();
+    const actifs = new Map(d.animaux.filter((a) => !a.archive).map((a) => [a.id, a]));
+    const medicaments = d.traitements.filter((t) => t.statut !== 'termine' && t.prisesParJour && actifs.has(t.animalId) &&
+      (!t.debut || t.debut <= aujourdhui) && (!t.fin || t.fin >= aujourdhui));
+    if (medicaments.length) {
+      const section = el('section', { class: 'groupe-rappels medicaments', 'aria-labelledby': 'rappels-medicaments' },
+        el('h2', { id: 'rappels-medicaments', text: 'Médicaments du jour (' + medicaments.length + ')' }));
+      for (const t of medicaments) {
+        section.append(el('article', { class: 'carte carte-rappel' },
+          el('p', { class: 'etiquette', text: actifs.get(t.animalId).nom }),
+          el('h3', { class: 'carte-titre', text: t.nom }),
+          t.dose || t.frequence ? el('p', { class: 'carte-detail', text: [t.dose, t.frequence].filter(Boolean).join(' — ') }) : null,
+          EcranSante.blocPrises(t, () => this.rafraichirRappels())));
+      }
+      zone.append(section);
+    }
+
+    const tous = Rappels.calculer(d);
+    const g = Rappels.grouper(tous);
     const groupes = [
       { cle: 'retard', titre: 'En retard', classe: 'retard' },
       { cle: 'aujourdhui', titre: 'Aujourd’hui', classe: 'bientot' },
@@ -232,12 +285,43 @@ const EcranAgenda = {
     if (g.plusTard.length) {
       zone.append(el('p', { class: 'discret', text: g.plusTard.length + ' autre(s) rappel(s) plus lointain(s), visibles dans la fiche de chaque animal.' }));
     }
+
+    // Tout envoyer d'un coup vers l'agenda du téléphone
+    const aVenir = tous.filter((r) => r.ecart >= 0);
+    if (aVenir.length) {
+      zone.append(el('section', { class: 'bloc' },
+        el('h2', { text: 'Dans ton agenda' }),
+        el('p', { class: 'aide', text: 'Omni-Animaux ne peut pas te prévenir quand elle est fermée. Ton agenda, lui, le peut : envoie-lui tous les rappels à venir (' + aVenir.length + ') dans un seul fichier d’agenda. À refaire après avoir ajouté de nouveaux rappels.' }),
+        bouton('Ajouter tous les rappels à l’agenda', () => Agenda.envoyerFichier(
+          aVenir.map((r) => Agenda.depuisRappel(r, r.type === 'rdv' ? this.lieuRappel(r, d) : '')), 'omni-animaux-rappels-' + Dates.aujourdhui()),
+        { classe: 'secondaire large', icone: 'cloche', id: 'bouton-agenda-tout' })));
+    }
+  },
+
+  /* Redessine la page Rappels en gardant la position de l'écran */
+  async rafraichirRappels() {
+    const y = window.scrollY;
+    await this.afficherRappels();
+    window.scrollTo(0, y);
+    Nav.majPastille();
+  },
+
+  /* Le lieu d'un rendez-vous de la page Rappels */
+  lieuRappel(r, d) {
+    const rdv = d.rdv.find((x) => x.id === r.id);
+    return rdv ? this.lieu(rdv.veterinaire, d.veterinaires) : '';
   },
 
   carteRappel(r) {
     const quand = Dates.fr(r.date) + (r.heure ? ' à ' + Dates.frHeure(r.date, r.heure).split(' à ')[1] : '') + ' — ' + Dates.relatif(r.date);
     const actions = el('div', { class: 'rangee-boutons' },
       bouton('Voir la fiche', () => Nav.aller({ vue: 'animal', id: r.animalId, section: r.section }), { classe: 'secondaire' }));
+    if (r.ecart >= 0) {
+      actions.append(bouton('Ajouter à l’agenda', async () => {
+        const d = { rdv: r.type === 'rdv' ? [await BD.lire('rdv', r.id)].filter(Boolean) : [], veterinaires: this._vetos || [] };
+        Agenda.proposer(Agenda.depuisRappel(r, r.type === 'rdv' ? this.lieuRappel(r, d) : ''));
+      }, { classe: 'secondaire', icone: 'cloche' }));
+    }
     if (r.type === 'tache') {
       actions.prepend(bouton('Marquer comme fait', async () => {
         const t = await BD.lire('taches', r.id);

@@ -227,7 +227,9 @@ const EcranSante = {
         EcranAnimal.ligne('Dose', t.dose), EcranAnimal.ligne('Fréquence', t.frequence),
         EcranAnimal.ligne('Début', t.debut ? Dates.fr(t.debut) : ''),
         EcranAnimal.ligne('Fin', t.fin ? Dates.fr(t.fin) : '', t.fin && t.statut !== 'termine' ? this.echeance(t.fin) : null),
-        EcranAnimal.ligne('Note', t.note)],
+        t.prisesParJour ? EcranAnimal.ligne('Prises par jour', String(t.prisesParJour)) : null,
+        EcranAnimal.ligne('Note', t.note),
+        t.statut !== 'termine' && t.prisesParJour ? this.blocPrises(t, a.archive ? null : () => EcranAnimal.rafraichir()) : null],
       autres: t.statut !== 'termine' && !a.archive ? bouton('Marquer terminé', () => this.terminer(t), { classe: 'secondaire', icone: 'coche' }) : null,
       modifier: a.archive ? null : () => this.formulaireTraitement(a, t),
       supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('traitements', t, t.nom)
@@ -238,6 +240,96 @@ const EcranSante = {
     if (finis.length) {
       zone.append(el('h3', { class: 'sous-titre', text: 'Terminés (' + finis.length + ')' }));
       finis.forEach((t) => zone.append(carte(t)));
+    }
+  },
+
+  /* ---------- Les prises du jour (traitements avec « prises par jour ») ---------- */
+
+  prisesDuJour(t, jour) {
+    return ((t.prises && t.prises[jour]) || []).slice().sort();
+  },
+
+  /* « 08:05 » → « 8 h 05 » */
+  heureLisible(h) {
+    const [hh, mm] = h.split(':');
+    return Number(hh) + ' h ' + mm;
+  },
+
+  /* Le petit encadré « Aujourd'hui : 1 prise sur 2 (8 h 05) » + boutons.
+     « apres » : ce qu'il faut redessiner ensuite (null = lecture seule). */
+  blocPrises(t, apres) {
+    const jour = Dates.aujourdhui();
+    const auj = this.prisesDuJour(t, jour);
+    const hier = this.prisesDuJour(t, Dates.ajouterJours(jour, -1));
+    const prevues = t.prisesParJour;
+    const complet = auj.length >= prevues;
+    const texte = auj.length
+      ? auj.length + ' prise' + (auj.length > 1 ? 's' : '') + ' sur ' + prevues + ' (' + auj.map((h) => this.heureLisible(h)).join(', ') + ')'
+      : 'aucune prise notée sur ' + prevues + ' prévue' + (prevues > 1 ? 's' : '');
+    const bloc = el('div', { class: 'encart prises' + (complet ? ' complet' : '') },
+      el('p', { class: 'ligne' }, el('span', { class: 'ligne-libelle', text: 'Aujourd’hui : ' }), el('strong', { text: texte })),
+      complet ? el('p', { class: 'ligne', text: '✓ Toutes les prises du jour sont notées.' }) : null,
+      hier.length ? el('p', { class: 'ligne discret', text: 'Hier : ' + hier.length + ' prise' + (hier.length > 1 ? 's' : '') + ' (' + hier.map((h) => this.heureLisible(h)).join(', ') + ')' }) : null);
+    if (apres) {
+      bloc.append(el('div', { class: 'rangee-boutons' },
+        bouton('Noter une prise maintenant', () => this.noterPrise(t, apres), { classe: complet ? 'secondaire' : 'principal', icone: 'coche' }),
+        auj.length ? bouton('Annuler la dernière prise', () => this.annulerPrise(t, apres), { classe: 'secondaire', icone: 'restaurer' }) : null));
+    }
+    return bloc;
+  },
+
+  /* Note une prise à l'heure actuelle. Si toutes les prises du jour sont
+     déjà notées, on demande confirmation : évite de donner deux fois. */
+  async noterPrise(t, apres) {
+    try {
+      const frais = (await BD.lire('traitements', t.id)) || t;      // la version la plus récente
+      const jour = Dates.aujourdhui();
+      const deja = this.prisesDuJour(frais, jour);
+      if (frais.prisesParJour && deja.length >= frais.prisesParJour) {
+        const ok = await UI.confirmer({
+          titre: 'Toutes les prises du jour sont déjà notées',
+          message: [
+            frais.nom + ' : ' + deja.length + ' prise(s) déjà notée(s) aujourd’hui (' + deja.map((h) => this.heureLisible(h)).join(', ') + '), pour ' + frais.prisesParJour + ' prévue(s).',
+            'Vérifie bien avant de redonner une dose. En cas de doute, demande au vétérinaire.'
+          ],
+          oui: 'Noter une prise de plus', non: 'Ne rien noter'
+        });
+        if (!ok) return;
+      }
+      const d = new Date();
+      const heure = Dates.deuxChiffres(d.getHours()) + ':' + Dates.deuxChiffres(d.getMinutes());
+      const prises = { ...(frais.prises || {}) };
+      prises[jour] = [...(prises[jour] || []), heure].sort();
+      // On garde 120 jours d'historique, pas plus
+      for (const j of Object.keys(prises)) if (Dates.ecartJours(j, jour) > 120) delete prises[j];
+      await BD.enregistrer('traitements', { ...frais, prises });
+      UI.annoncer('Prise notée à ' + this.heureLisible(heure) + ' (' + prises[jour].length + ' sur ' + (frais.prisesParJour || '?') + ' aujourd’hui).');
+      if (apres) await apres();
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
+  },
+
+  async annulerPrise(t, apres) {
+    try {
+      const frais = (await BD.lire('traitements', t.id)) || t;
+      const jour = Dates.aujourdhui();
+      const auj = this.prisesDuJour(frais, jour);
+      if (!auj.length) return;
+      const derniere = auj[auj.length - 1];
+      const ok = await UI.confirmer({
+        titre: 'Annuler cette prise ?',
+        message: 'La prise notée à ' + this.heureLisible(derniere) + ' aujourd’hui sera retirée.',
+        oui: 'Retirer la prise', danger: true
+      });
+      if (!ok) return;
+      const prises = { ...(frais.prises || {}) };
+      prises[jour] = auj.slice(0, -1);
+      await BD.enregistrer('traitements', { ...frais, prises });
+      UI.annoncer('Prise retirée.');
+      if (apres) await apres();
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
     }
   },
 
@@ -262,6 +354,8 @@ const EcranSante = {
         { nom: 'nom', label: 'Nom du médicament ou du traitement', type: 'texte', requis: true, long: 150 },
         { nom: 'dose', label: 'Dose', type: 'texte', long: 100, placeholder: 'exemple : 1/2 comprimé' },
         { nom: 'frequence', label: 'Fréquence', type: 'texte', long: 150, placeholder: 'exemple : matin et soir' },
+        { nom: 'prisesParJour', label: 'Nombre de prises par jour (facultatif)', type: 'nombre', entier: true, positif: true, max: 24,
+          aide: 'Permet de cocher chaque prise, pour ne jamais se demander « est-ce que je lui ai déjà donné ? ».' },
         { nom: 'debut', label: 'Date de début', type: 'date' },
         { nom: 'fin', label: 'Date de fin', type: 'date', aide: 'Si elle est connue. Elle apparaîtra dans les rappels tant que le traitement est en cours.' },
         { nom: 'statut', label: 'Statut', type: 'radios', requis: true, options: [{ valeur: 'en-cours', texte: 'En cours' }, { valeur: 'termine', texte: 'Terminé' }] },
@@ -284,7 +378,7 @@ const EcranSante = {
     if (allergies.length || a.alimEviter) {
       zone.append(el('div', { class: 'encart attention' },
         el('p', { class: 'etiquette', text: 'Allergies connues' }),
-        el('ul', {}, allergies.map((n) => el('li', { text: n.texte })),
+        el('ul', {}, allergies.map((n) => el('li', { text: n.texte || 'Allergie notée le ' + Dates.fr(n.date) })),
           a.alimEviter ? el('li', { text: 'Aliments à éviter : ' + a.alimEviter }) : null)));
     }
     if (!toutes.length) return EcranAnimal.message(zone, 'Aucune note pour l’instant : symptômes, observations, résultats d’examens, allergies, antécédents…');
@@ -316,11 +410,22 @@ const EcranSante = {
     for (const n of visibles) {
       zone.append(EcranAnimal.carteFiche({
         titre: Dates.fr(n.date) + ' — ' + (this.NOMS_NOTES[n.categorie] || 'Note'),
-        lignes: [el('p', { class: 'texte-libre', text: n.texte })],
+        lignes: [
+          n.texte ? el('p', { class: 'texte-libre', text: n.texte }) : null,
+          n.pieces && n.pieces.length ? this.vignettesDocuments(n.pieces) : null],
         modifier: a.archive ? null : () => this.formulaireNote(a, n),
         supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('notes', n, 'Note du ' + Dates.fr(n.date))
       }));
     }
+  },
+
+  /* Les vignettes des documents d'une note (toucher = voir en grand) */
+  vignettesDocuments(pieces) {
+    return el('div', { class: 'vignettes-documents' }, pieces.map((src, i) => {
+      const img = el('img', { alt: '' });
+      img.src = src;
+      return el('button', { type: 'button', class: 'vignette-document', 'aria-label': 'Voir le document ' + (i + 1) + ' en grand', onclick: () => UI.voirImage(src, 'Document ' + (i + 1)) }, img);
+    }));
   },
 
   formulaireNote(a, n) {
@@ -330,8 +435,11 @@ const EcranSante = {
       champs: [
         { nom: 'date', label: 'Date', type: 'date', requis: true, pasDansFutur: true },
         { nom: 'categorie', label: 'Type de note', type: 'choix', requis: true, options: Object.entries(this.NOMS_NOTES).map(([valeur, texte]) => ({ valeur, texte })) },
-        { nom: 'texte', label: 'Note', type: 'zone', requis: true }
+        { nom: 'texte', label: 'Note', type: 'zone' },
+        { nom: 'pieces', label: 'Documents joints (ordonnance, résultats…)', type: 'photos',
+          aide: 'Jusqu’à ' + MAX_PIECES + ' photos. Elles sont gardées assez nettes pour relire le texte, et incluses dans la sauvegarde.' }
       ],
+      valider: (v) => (!v.texte && !(v.pieces && v.pieces.length) ? { texte: 'Écris une note ou joins au moins un document.' } : {}),
       enregistrer: async (v) => {
         await BD.enregistrer('notes', { ...(n || {}), ...v, animalId: a.id });
         return 'Note enregistrée.';

@@ -9,12 +9,16 @@
    un « canvas » (une zone de dessin invisible) à 800 pixels au plus de
    côté, puis on l'enregistre en JPEG qualité 0,8 : elle ne pèse plus
    qu'environ 60 à 150 Ko, et reste bien nette sur l'écran.
+
+   Les DOCUMENTS (ordonnance, résultat d'analyse) gardent plus de
+   détails (1600 pixels, qualité 0,85) pour que le texte reste lisible.
    ============================================================ */
 'use strict';
 
 const Photo = {
   COTE_MAX: 800,       // taille maximale du plus grand côté, en pixels
   QUALITE: 0.8,        // qualité JPEG (de 0 à 1)
+  DOCUMENT: { cote: 1600, qualite: 0.85 },   // réglages pour un document
 
   /* Charge l'image depuis le fichier choisi.
      createImageBitmap tient compte du sens de la photo (portrait ou
@@ -34,8 +38,11 @@ const Photo = {
     });
   },
 
-  /* Renvoie la photo réduite, sous forme de texte « data:image/jpeg;base64,… » */
-  async reduire(fichier) {
+  /* Renvoie la photo réduite, sous forme de texte « data:image/jpeg;base64,… »
+     options (facultatif) : { cote, qualite }, par exemple Photo.DOCUMENT */
+  async reduire(fichier, options) {
+    const cote = (options && options.cote) || this.COTE_MAX;
+    const qualite = (options && options.qualite) || this.QUALITE;
     if (!fichier || !/^image\//.test(fichier.type || 'image/')) {
       throw new Error('Ce fichier n’est pas une image.');
     }
@@ -44,7 +51,7 @@ const Photo = {
     const hauteur = image.height;
     if (!largeur || !hauteur) throw new Error('Cette image est vide ou abîmée.');
 
-    const echelle = Math.min(1, this.COTE_MAX / Math.max(largeur, hauteur));
+    const echelle = Math.min(1, cote / Math.max(largeur, hauteur));
     const l = Math.max(1, Math.round(largeur * echelle));
     const h = Math.max(1, Math.round(hauteur * echelle));
     const canvas = document.createElement('canvas');
@@ -56,6 +63,6 @@ const Photo = {
     ctx.fillRect(0, 0, l, h);
     ctx.drawImage(image, 0, 0, l, h);
     if (image.close) image.close();     // libère la mémoire tout de suite
-    return canvas.toDataURL('image/jpeg', this.QUALITE);
+    return canvas.toDataURL('image/jpeg', qualite);
   }
 };

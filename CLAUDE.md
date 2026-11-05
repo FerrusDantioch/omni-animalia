@@ -24,7 +24,13 @@ français simple, réponses en français.
   supprimer » = double confirmation (la seconde exige de taper SUPPRIMER).
 - **Aucun calendrier vaccinal prérempli** : seulement des noms proposés en
   saisie semi-automatique (`VACCINS_COURANTS`).
-- **Pas de notification** : les rappels sont calculés à l'ouverture.
+- **Pas de notification** : les rappels sont calculés à l'ouverture. Pour être
+  prévenu, « Ajouter à l'agenda » (`outil-partage.js`) : fichier .ics (heure
+  « flottante » = locale, alertes veille / 1 h avant) partagé ou téléchargé, ou
+  lien Google Agenda (internet). C'est l'agenda du téléphone qui prévient.
+- **Prises de médicaments** (`prisesParJour`, `prises` = { jour: [heures] },
+  120 jours gardés) : noter une prise de plus que prévu demande confirmation
+  (risque de double dose).
 - **Dates** : texte `AAAA-MM-JJ`, heure locale, affichage `jj/mm/aaaa`
   (`outil-dates.js`). Récurrences mensuelles/annuelles avec « jour d'ancrage »
   (`recJour`).
@@ -37,7 +43,8 @@ français simple, réponses en français.
 ## Même adresse de site que les autres applications
 
 - Base IndexedDB : `omni-animalia` (ne jamais renommer).
-- localStorage : seulement `omnianimaux_theme` (copie du thème pour éviter un éclair).
+- localStorage : seulement `omnianimaux_theme` et `omnianimaux_taille` (copies
+  pour éviter un éclair au démarrage).
 - Caches : préfixe `omni-animalia-` ; `sw.js` ne supprime que ceux-là.
 - `manifest.json` : `"id": "/omni-animalia/"` (ne plus changer).
 
@@ -47,8 +54,11 @@ Magasins : `animaux`, `veterinaires`, `pesees`, `vaccins`, `antiparasitaires`,
 `traitements`, `rdv`, `notes`, `taches` (+ `reglages` clé/valeur). Schémas dans
 `SCHEMAS` (`bd-base.js`) : `nettoyerFiche()` ne garde **que** les champs connus,
 donc tout nouveau champ doit y être ajouté. Poids rangé en grammes (`grammes`).
+Notes : `pieces` = jusqu'à 6 documents (JPEG 1600 px, `Photo.DOCUMENT`), texte
+facultatif si un document est joint. Animaux : `consignesGarde`. Réglages :
+`theme`, `taille`, `unitePoids`, `contactGarde` { nom, telephone } (exportés).
 Sauvegarde JSON : `format: 'omni-animaux-sauvegarde'`, `versionFormat: 1`, sans
-le mot de passe. Fiches de démonstration marquées `exemple: true`.
+le mot de passe ; partagée (menu Partager d'Android) ou téléchargée. Fiches de démonstration marquées `exemple: true`.
 
 ## ⚠️ Avant de pousser : incrémenter la version
 

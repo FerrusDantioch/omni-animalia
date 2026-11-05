@@ -248,6 +248,30 @@ const UI = {
     }
   },
 
+  /* Montre une image en grand (document joint à une note).
+     « Taille réelle » permet de lire les petits caractères en faisant
+     défiler l'image. */
+  voirImage(src, titre) {
+    return new Promise((resoudre) => {
+      const dlg = $('#visionneuse');
+      vider(dlg);
+      const img = el('img', { class: 'image-visionneuse', alt: titre || 'Document' });
+      img.src = src;
+      const zone = el('div', { class: 'visionneuse-zone' }, img);
+      const taille = bouton('Taille réelle', () => {
+        const reel = zone.classList.toggle('taille-reelle');
+        $('span', taille).textContent = reel ? 'Ajuster à l’écran' : 'Taille réelle';
+      }, { classe: 'secondaire' });
+      const fermer = bouton('Fermer', () => dlg.close(), { classe: 'principal' });
+      dlg.setAttribute('aria-label', titre || 'Document');
+      dlg.append(zone, el('div', { class: 'dialogue-boutons' }, taille, fermer));
+      const fin = () => { dlg.removeEventListener('close', fin); vider(dlg); resoudre(); };
+      dlg.addEventListener('close', fin);
+      dlg.showModal();
+      fermer.focus();
+    });
+  },
+
   /* Nombre à la française : 4.5 → « 4,5 » */
   nombre(n, decimales) {
     if (typeof n !== 'number' || isNaN(n)) return '—';
@@ -267,7 +291,7 @@ const UI = {
    { nom, label, type, requis, aide, options, suggestions, visibleSi,
      positif, entier, min, max, pasDansFutur, long }
    Types : texte, zone, date, heure, nombre, choix, radios, case, tel,
-   motdepasse, photo.
+   motdepasse, photo, photos (plusieurs documents).
    Le formulaire s'ouvre dans l'écran « formulaire ». À l'enregistrement,
    chaque champ est vérifié, et un message clair s'affiche sous chaque
    champ mal rempli. */
@@ -359,6 +383,10 @@ const Formulaire = {
         bloc.append(this.fabriquerPhoto(champ, v));
         break;
 
+      case 'photos':
+        bloc.append(this.fabriquerDocuments(champ, Array.isArray(v) ? v : []));
+        break;
+
       default: {
         // texte, date, heure, nombre, tel
         bloc.append(el('label', { for: id, text: champ.label + etoile }));
@@ -443,6 +471,61 @@ const Formulaire = {
     return conteneur;
   },
 
+  /* Le champ « documents » : plusieurs images (ordonnance, résultat
+     d'analyse…). Chacune a sa vignette et son bouton « Retirer ». La liste
+     est rangée, sous forme de texte, dans un champ caché. */
+  fabriquerDocuments(champ, valeurs) {
+    let liste = valeurs.slice();
+    const cache = el('input', { type: 'hidden', name: champ.nom });
+    const vignettes = el('div', { class: 'vignettes-documents' });
+    const etat = el('p', { class: 'aide', 'aria-live': 'polite' });
+    const fichierCamera = el('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'invisible', tabindex: '-1', 'aria-hidden': 'true' });
+    const fichierGalerie = el('input', { type: 'file', accept: 'image/*', multiple: true, class: 'invisible', tabindex: '-1', 'aria-hidden': 'true' });
+    const ajouterCamera = bouton('Photographier un document', () => fichierCamera.click(), { classe: 'secondaire', icone: 'photo' });
+    const ajouterGalerie = bouton('Choisir dans la galerie', () => fichierGalerie.click(), { classe: 'secondaire' });
+
+    const dessiner = () => {
+      cache.value = JSON.stringify(liste);
+      vider(vignettes);
+      liste.forEach((src, i) => {
+        const img = el('img', { alt: '' });
+        img.src = src;
+        vignettes.append(el('div', { class: 'document' },
+          el('button', { type: 'button', class: 'vignette-document', 'aria-label': 'Voir le document ' + (i + 1), onclick: () => UI.voirImage(src, 'Document ' + (i + 1)) }, img),
+          bouton('Retirer', () => { liste.splice(i, 1); dessiner(); etat.textContent = 'Document retiré (il disparaîtra à l’enregistrement).'; },
+            { classe: 'secondaire petit-bouton', icone: 'poubelle', aria: 'Retirer le document ' + (i + 1) })));
+      });
+      const plein = liste.length >= MAX_PIECES;
+      ajouterCamera.disabled = plein;
+      ajouterGalerie.disabled = plein;
+      if (!liste.length) etat.textContent = 'Aucun document joint.';
+      else if (plein) etat.textContent = MAX_PIECES + ' documents au maximum pour une note.';
+    };
+
+    const traiter = async (fichiers) => {
+      const choisis = [...fichiers].slice(0, MAX_PIECES - liste.length);
+      if (!choisis.length) return;
+      etat.textContent = 'Préparation du document…';
+      try {
+        for (const f of choisis) liste.push(await Photo.reduire(f, Photo.DOCUMENT));
+        dessiner();
+        etat.textContent = choisis.length > 1 ? choisis.length + ' documents ajoutés.' : 'Document ajouté.';
+      } catch (e) {
+        dessiner();
+        etat.textContent = e.message || 'Cette image n’a pas pu être lue.';
+      }
+    };
+    fichierCamera.addEventListener('change', () => { traiter(fichierCamera.files); fichierCamera.value = ''; });
+    fichierGalerie.addEventListener('change', () => { traiter(fichierGalerie.files); fichierGalerie.value = ''; });
+    dessiner();
+
+    return el('div', { class: 'champ-photo-zone' },
+      el('p', { class: 'etiquette', text: champ.label }),
+      vignettes, cache, fichierCamera, fichierGalerie,
+      el('div', { class: 'rangee-boutons' }, ajouterCamera, ajouterGalerie),
+      etat);
+  },
+
   /* Lit toutes les valeurs du formulaire (les champs cachés comptent pour vides) */
   lire(form) {
     const v = {};
@@ -454,6 +537,11 @@ const Formulaire = {
       } else if (champ.type === 'radios') {
         const coche = $('input:checked', bloc);
         v[champ.nom] = visible && coche ? coche.value : '';
+      } else if (champ.type === 'photos') {
+        const cache = $('[name="' + champ.nom + '"]', bloc);
+        let liste = [];
+        try { liste = visible && cache ? JSON.parse(cache.value || '[]') : []; } catch (e) { liste = []; }
+        v[champ.nom] = liste;
       } else {
         const saisie = $('[name="' + champ.nom + '"]', bloc);
         // Un mot de passe est gardé tel quel (une espace peut en faire partie)
@@ -493,7 +581,7 @@ const Formulaire = {
       const bloc = $('[data-champ="' + champ.nom + '"]', form);
       if (bloc && bloc.hidden) continue;
       const t = brut[champ.nom];
-      const vide = t === '' || t === false;
+      const vide = t === '' || t === false || (Array.isArray(t) && !t.length);
 
       if (champ.requis && vide && champ.type !== 'case') {
         erreurs[champ.nom] = champ.type === 'radios' || champ.type === 'choix'

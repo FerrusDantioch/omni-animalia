@@ -9,6 +9,7 @@
    - le formulaire d'ajout / de modification d'un animal ;
    - l'archivage, la restauration ;
    - le carnet de santé à imprimer (ou enregistrer en PDF).
+   (La fiche de garde est dans ecran-garde.js.)
    Les autres parties sont dans ecran-sante.js et ecran-agenda.js.
    ============================================================ */
 'use strict';
@@ -30,6 +31,21 @@ const SECTIONS = [
 const ESPECES = ['Chien', 'Chat', 'Lapin', 'Rongeur', 'Furet', 'Oiseau', 'Reptile', 'Poisson', 'Cheval', 'Âne', 'Chèvre', 'Mouton', 'Poule', 'Autre'];
 
 const NOMS_SEXE = { male: 'Mâle', femelle: 'Femelle', inconnu: 'Inconnu' };
+
+/* Lance l'impression de ce qui a été rangé dans la zone #carnet.
+   Le titre de la page devient le nom proposé pour le fichier PDF. */
+const Impression = {
+  lancer(titre) {
+    const ancienTitre = document.title;
+    document.title = titre;
+    const remettre = () => {
+      document.title = ancienTitre;
+      window.removeEventListener('afterprint', remettre);
+    };
+    window.addEventListener('afterprint', remettre);
+    window.print();
+  }
+};
 
 const EcranAnimal = {
   animal: null,       // l'animal affiché
@@ -189,6 +205,7 @@ const EcranAnimal = {
 
     const actions = el('div', { class: 'pile-boutons' });
     if (!a.archive) actions.append(bouton('Modifier l’identité', () => this.formulaire(a), { classe: 'principal large', icone: 'crayon' }));
+    actions.append(bouton('Fiche de garde', () => Nav.aller({ vue: 'garde', id: a.id }), { classe: 'secondaire large', icone: 'info' }));
     actions.append(bouton('Carnet de santé (imprimer ou PDF)', () => this.imprimerCarnet(a), { classe: 'secondaire large', icone: 'imprimer' }));
     if (!a.archive) actions.append(bouton('Archiver cet animal', () => this.formulaireArchive(a), { classe: 'secondaire large', icone: 'archive' }));
     zone.append(actions);
@@ -363,18 +380,11 @@ const EcranAnimal = {
       section('Rendez-vous vétérinaires', tableau(['Date', 'Motif', 'Vétérinaire', 'Compte rendu'],
         rdv.sort(parDate('date')).map((r) => [Dates.frHeure(r.date, r.heure), r.motif, r.veterinaire, r.compteRendu]))),
       section('Notes de santé', tableau(['Date', 'Type', 'Note'],
-        notes.sort(parDate('date')).map((n) => [Dates.fr(n.date), EcranSante.NOMS_NOTES[n.categorie] || '', n.texte]))),
+        notes.sort(parDate('date')).map((n) => [Dates.fr(n.date), EcranSante.NOMS_NOTES[n.categorie] || '',
+          (n.texte || '') + (n.pieces && n.pieces.length ? ' [' + n.pieces.length + ' document(s) joint(s) dans l’application]' : '')]))),
       el('footer', { class: 'carnet-pied', text: 'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire. — Omni-Animaux, © 2026 Ferrus Dantioch' })
     );
 
-    // Le titre de la page devient le nom proposé pour le fichier PDF
-    const ancienTitre = document.title;
-    document.title = 'Carnet de santé - ' + a.nom;
-    const remettre = () => {
-      document.title = ancienTitre;
-      window.removeEventListener('afterprint', remettre);
-    };
-    window.addEventListener('afterprint', remettre);
-    window.print();
+    Impression.lancer('Carnet de santé - ' + a.nom);
   }
 };

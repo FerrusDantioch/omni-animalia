@@ -23,7 +23,7 @@ const ADRESSE_CONTACT = '';
 
 /* Numéro de version affiché dans « À propos ».
    ⚠️ À changer en même temps que CACHE dans sw.js. */
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 
 /* ---------- 1. Le thème ---------- */
@@ -41,6 +41,18 @@ const Theme = {
 };
 
 
+/* ---------- 1 bis. La taille du texte ----------
+   « normal », « grand » ou « tresgrand ». Toute la mise en page suit,
+   car les tailles de la feuille de style sont relatives (unités rem). */
+const Taille = {
+  appliquer(taille) {
+    const t = ['normal', 'grand', 'tresgrand'].includes(taille) ? taille : 'normal';
+    document.documentElement.dataset.taille = t;
+    try { localStorage.setItem('omnianimaux_taille', t); } catch (e) { /* sans gravité */ }
+  }
+};
+
+
 /* ---------- 2. La navigation ----------
    Chaque écran a une adresse (#accueil, #rappels, #animal/ID/poids…).
    On utilise l'historique du navigateur : le bouton (ou geste) « retour »
@@ -51,6 +63,7 @@ const Nav = {
 
   adresse(etat) {
     if (etat.vue === 'animal') return '#animal/' + etat.id + '/' + (etat.section || 'identite');
+    if (etat.vue === 'garde') return '#garde/' + etat.id;
     return '#' + etat.vue;
   },
 
@@ -58,6 +71,7 @@ const Nav = {
     const h = decodeURIComponent(location.hash.slice(1));
     const morceaux = h.split('/');
     if (morceaux[0] === 'animal' && morceaux[1]) return { vue: 'animal', id: morceaux[1], section: morceaux[2] || 'identite' };
+    if (morceaux[0] === 'garde' && morceaux[1]) return { vue: 'garde', id: morceaux[1] };
     if (['accueil', 'archives', 'rappels', 'veterinaires', 'reglages', 'apropos'].includes(morceaux[0])) return { vue: morceaux[0] };
     return { vue: 'accueil' };
   },
@@ -97,7 +111,7 @@ const Nav = {
     for (const v of $$('.vue')) v.hidden = v.dataset.vue !== etat.vue;
 
     // L'onglet du bas correspondant est mis en évidence
-    const onglets = { accueil: 'accueil', archives: 'accueil', animal: 'accueil', rappels: 'rappels', veterinaires: 'veterinaires', reglages: 'reglages', apropos: 'reglages' };
+    const onglets = { accueil: 'accueil', archives: 'accueil', animal: 'accueil', garde: 'accueil', rappels: 'rappels', veterinaires: 'veterinaires', reglages: 'reglages', apropos: 'reglages' };
     if (etat.vue !== 'formulaire') {
       for (const b of $$('#barre-nav button')) {
         if (b.dataset.onglet === onglets[etat.vue]) b.setAttribute('aria-current', 'page');
@@ -111,6 +125,7 @@ const Nav = {
         case 'accueil':      await EcranAccueil.afficher(); break;
         case 'archives':     await EcranAccueil.afficherArchives(); break;
         case 'animal':       await EcranAnimal.afficher(etat.id, etat.section || 'identite'); break;
+        case 'garde':        await EcranGarde.afficher(etat.id); break;
         case 'rappels':      await EcranAgenda.afficherRappels(); break;
         case 'veterinaires': await EcranVeto.afficher(); break;
         case 'reglages':     await EcranReglages.afficher(); break;
@@ -206,6 +221,7 @@ const Verrou = {
       $('#barre-nav').hidden = true;
       $('#bandeau-mise-a-jour').hidden = true;
       if ($('#dialogue').open) $('#dialogue').close();
+      if ($('#visionneuse').open) $('#visionneuse').close();
       const ecran = $('#verrou');
       const form = $('#verrou-form');
       const champ = $('#verrou-mdp');
@@ -370,6 +386,7 @@ const App = {
 
     try {
       Theme.appliquer(await BD.reglage('theme', 'omni'));
+      Taille.appliquer(await BD.reglage('taille', 'normal'));
       if (!(await BD.reglage('debutSuivi', null))) await BD.definirReglage('debutSuivi', Dates.aujourdhui());
     } catch (e) {
       return this.erreurFatale(UI.messageErreur(e));
@@ -391,7 +408,7 @@ const App = {
         message: [
           'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire.',
           'Tes données restent uniquement sur cet appareil : rien n’est envoyé sur internet. Pense à faire des sauvegardes régulières (Réglages → Sauvegarder) pour ne pas les perdre.',
-          'Les rappels s’affichent quand tu ouvres l’application : elle n’envoie pas de notification.'
+          'Les rappels s’affichent quand tu ouvres l’application : elle n’envoie pas de notification. Pour être prévenu à l’heure, utilise « Ajouter à l’agenda ».'
         ]
       });
       await BD.definirReglage('avertissementVu', true);

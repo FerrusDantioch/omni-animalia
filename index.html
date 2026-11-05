@@ -16,18 +16,21 @@
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
 
-<!-- Pose le thème choisi AVANT le premier affichage : sans cela, l'écran
-     s'allumerait une fraction de seconde avec les couleurs par défaut
-     (un éclair désagréable). Le thème est recopié dans le localStorage
-     exprès pour être lu ici tout de suite. -->
+<!-- Pose le thème et la taille du texte choisis AVANT le premier
+     affichage : sans cela, l'écran s'allumerait une fraction de seconde
+     avec les réglages par défaut (un éclair désagréable). Ils sont
+     recopiés dans le localStorage exprès pour être lus ici tout de suite. -->
 <script>
 (function () {
-  var t = 'omni';
+  var t = 'omni', z = 'normal';
   try {
     var r = localStorage.getItem('omnianimaux_theme');
     if (r === 'omni' || r === 'sombre' || r === 'clair') t = r;
-  } catch (e) { /* stockage refusé : thème par défaut */ }
+    var s = localStorage.getItem('omnianimaux_taille');
+    if (s === 'normal' || s === 'grand' || s === 'tresgrand') z = s;
+  } catch (e) { /* stockage refusé : réglages par défaut */ }
   document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.taille = z;
 })();
 </script>
 
@@ -43,6 +46,7 @@
 <script defer src="./outil-photo.js"></script>
 <script defer src="./outil-graphique.js"></script>
 <script defer src="./outil-rappels.js"></script>
+<script defer src="./outil-partage.js"></script>
 <script defer src="./bd-base.js"></script>
 <script defer src="./bd-sauvegarde.js"></script>
 <script defer src="./ecran-accueil.js"></script>
@@ -50,6 +54,7 @@
 <script defer src="./ecran-sante.js"></script>
 <script defer src="./ecran-agenda.js"></script>
 <script defer src="./ecran-veto.js"></script>
+<script defer src="./ecran-garde.js"></script>
 <script defer src="./ecran-reglages.js"></script>
 <script defer src="./app.js"></script>
 </head>
@@ -132,14 +137,23 @@
     <div id="animal-contenu"></div>
   </section>
 
+  <!-- ===== Fiche de garde d'un animal ===== -->
+  <section class="vue" data-vue="garde" hidden>
+    <header class="entete">
+      <button type="button" class="bouton retour" data-action="retour" aria-label="Revenir à la fiche"></button>
+      <h1 tabindex="-1" id="garde-titre">Fiche de garde</h1>
+    </header>
+    <div id="garde-contenu"></div>
+  </section>
+
   <!-- ===== Rappels ===== -->
   <section class="vue" data-vue="rappels" hidden>
     <header class="entete">
       <h1 tabindex="-1">Rappels</h1>
     </header>
     <p class="discret">Calculés à l’ouverture de l’application, pour tous tes animaux.
-       Ouvre Omni-Animaux régulièrement : elle ne te préviendra pas d’elle-même
-       (voir « À propos »).</p>
+       Ouvre Omni-Animaux régulièrement : elle ne te préviendra pas d’elle-même.
+       Pour être prévenu à l’heure, ajoute les rappels à ton agenda.</p>
     <div id="rappels-liste"></div>
   </section>
 
@@ -197,8 +211,10 @@
       <p>Les rappels (vaccins, vermifuges, rendez-vous, tâches) sont calculés et affichés
          <strong>quand tu ouvres l’application</strong>. Omni-Animaux n’envoie pas de
          notification : une application qui fonctionne hors ligne, sans serveur, ne peut pas
-         garantir qu’une notification arrive à l’heure. Pour un rendez-vous important, ajoute
-         aussi une alarme dans l’agenda de ton téléphone.</p>
+         garantir qu’une notification arrive à l’heure.</p>
+      <p>Pour être prévenu à temps, utilise les boutons <strong>« Ajouter à l’agenda »</strong>
+         (page Rappels et rendez-vous) : c’est alors l’agenda de ton téléphone qui t’avertit,
+         même quand Omni-Animaux est fermée.</p>
     </div>
 
     <!-- Mention de l'auteur : uniquement le pseudonyme, jamais le vrai nom.
@@ -256,6 +272,9 @@
 
 <!-- Fenêtre de confirmation (remplie au besoin par outil-interface.js) -->
 <dialog id="dialogue" class="dialogue"></dialog>
+
+<!-- Visionneuse : un document joint, en grand -->
+<dialog id="visionneuse" class="dialogue visionneuse"></dialog>
 
 <!-- Messages courts (« Enregistré », erreurs…) -->
 <div id="annonce" class="annonce" role="status" aria-live="polite"></div>
