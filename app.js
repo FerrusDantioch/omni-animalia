@@ -12,18 +12,14 @@
    ============================================================ */
 'use strict';
 
-/* ╔══════════════════════════════════════════════════════════╗
-   ║  ✏️ À COMPLÉTER : l'adresse e-mail de contact d'Omni-Animaux ║
-   ║  Écrivez-la entre les deux apostrophes, par exemple :     ║
-   ║  const ADRESSE_CONTACT = 'omni-animaux@exemple.net';      ║
-   ║  Tant qu'elle est vide, la page À propos affiche          ║
-   ║  « Adresse de contact : bientôt disponible ».             ║
-   ╚══════════════════════════════════════════════════════════╝ */
-const ADRESSE_CONTACT = '';
+/* L'adresse e-mail de contact (la même que celle du portfolio de
+   l'Omni-système). Pour la changer, écrire la nouvelle entre les deux
+   apostrophes. Vide = la page À propos affiche « bientôt disponible ». */
+const ADRESSE_CONTACT = 'omni-systeme.choking513@passmail.net';
 
 /* Numéro de version affiché dans « À propos ».
    ⚠️ À changer en même temps que CACHE dans sw.js. */
-const VERSION = '1.2.1';
+const VERSION = '1.2.2';
 
 
 /* ---------- 1. Le thème ---------- */
@@ -356,7 +352,8 @@ const App = {
       contact.append(
         el('p', {}, 'Une idée, une gêne, quelque chose qui manque ? Tes retours sont les bienvenus. Écris à : ',
           el('span', { class: 'adresse-mail', text: ADRESSE_CONTACT })),
-        el('a', { class: 'bouton large', href: 'mailto:' + ADRESSE_CONTACT + '?subject=' + encodeURIComponent('Retour sur Omni-Animaux'), text: 'Envoyer un retour par e-mail' })
+        el('a', { class: 'bouton principal large', href: 'mailto:' + ADRESSE_CONTACT + '?subject=' + encodeURIComponent('Retour sur Omni-Animaux'), text: 'Envoyer un retour par e-mail' }),
+        bouton('Copier l’adresse', () => UI.copier(ADRESSE_CONTACT), { classe: 'secondaire large', icone: 'copier', id: 'copier-contact' })
       );
     } else {
       contact.append(el('p', { class: 'encart', text: 'Adresse de contact : bientôt disponible.' }));

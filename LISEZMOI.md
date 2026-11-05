@@ -50,18 +50,12 @@ les envoyer depuis un téléphone. Leur nom indique leur rôle.
 
 ---
 
-## ✏️ Mettre l'adresse de contact
+## ✏️ L'adresse de contact
 
-Ouvrez `app.js`. Tout en haut, dans le cadre « À COMPLÉTER », se trouve la ligne :
-
-```js
-const ADRESSE_CONTACT = '';
-```
-
-Écrivez l'adresse entre les deux apostrophes, par exemple
-`const ADRESSE_CONTACT = 'omni-animaux@exemple.net';`.
-Elle apparaîtra dans la page À propos, avec un bouton « Envoyer un retour par
-e-mail ». Ensuite, **changez le numéro de version** (voir plus bas).
+Elle se règle tout en haut d'`app.js`, à la ligne `const ADRESSE_CONTACT = '…';`
+(actuellement : celle du portfolio de l'Omni-système). Elle apparaît dans la page
+À propos, avec les boutons « Envoyer un retour par e-mail » et « Copier
+l'adresse ». Après une modification, **changez le numéro de version** (voir plus bas).
 
 ---
 

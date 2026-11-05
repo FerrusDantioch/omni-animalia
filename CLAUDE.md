@@ -41,8 +41,9 @@ français simple, réponses en français.
 - **Nouvelle version jamais imposée** : bandeau « Mettre à jour / Plus tard »,
   pas de `skipWaiting()` à l'installation, caché pendant un formulaire.
 - **Tous les fichiers à la racine** (envoi depuis un téléphone).
-- Contact : constante `ADRESSE_CONTACT` en haut d'`app.js` (vide pour l'instant ;
-  ne PAS réutiliser l'adresse d'Omni-Time).
+- Contact : constante `ADRESSE_CONTACT` en haut d'`app.js` = l'adresse du
+  portfolio de l'Omni-système (choix de l'auteur en 1.2.2, même adresse
+  qu'Omni-Time), avec bouton « Copier l'adresse ».
 
 ## Même adresse de site que les autres applications
 

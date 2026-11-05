@@ -391,6 +391,18 @@ lancer('Omni-Animaux', async () => {
     verifier((await p.$$('#vetos-liste .carte')).length === 1, '« Annuler » ne supprime rien');
   });
 
+  await section('Adresse de contact (À propos)', async () => {
+    await p.click('[data-onglet="reglages"]');
+    await pause(p, 500);
+    await p.locator('#reglages-contenu button', { hasText: 'À propos' }).click();
+    await pause(p, 500);
+    const lien = await p.getAttribute('#apropos-contact a', 'href');
+    verifier(lien === 'mailto:omni-systeme.choking513@passmail.net?subject=Retour%20sur%20Omni-Animaux', 'bouton « Envoyer un retour par e-mail »', lien);
+    await p.click('#copier-contact');
+    await pause(p, 300);
+    verifier(await p.evaluate(() => navigator.clipboard.readText()) === 'omni-systeme.choking513@passmail.net', 'bouton « Copier l’adresse »');
+  });
+
   await section('Bouton « retour » du téléphone', async () => {
     await p.click('[data-onglet="accueil"]');
     await pause(p, 500);
