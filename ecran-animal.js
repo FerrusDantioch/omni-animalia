@@ -35,32 +35,84 @@ const NOMS_SEXE = { male: 'Mâle', femelle: 'Femelle', inconnu: 'Inconnu' };
 /* Lance l'impression de ce qui a été rangé dans la zone #carnet.
    Le titre de la page devient le nom proposé pour le fichier PDF. */
 const Impression = {
+  _nettoyer: null,
+  _titreInitial: null,
+
   lancer(titre) {
-    const ancienTitre = document.title;
+    if (this._nettoyer) this._nettoyer(false);
+    if (this._titreInitial === null) this._titreInitial = document.title;
     document.title = titre;
-    const remettre = () => {
-      document.title = ancienTitre;
-      window.removeEventListener('afterprint', remettre);
+
+    let fini = false;
+    let minuteur = null;
+    const mql = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+    let vuPrint = mql ? mql.matches : false;
+
+    const surMedia = (ev) => {
+      if (ev.matches) vuPrint = true;
+      else if (vuPrint) remettre(true);
     };
-    window.addEventListener('afterprint', remettre);
-    window.print();
+
+    const remettre = (viderCarnet = true) => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(minuteur);
+      window.removeEventListener('afterprint', surAfterPrint);
+      if (mql) {
+        if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', surMedia);
+        else if (typeof mql.removeListener === 'function') mql.removeListener(surMedia);
+      }
+      if (this._titreInitial !== null) {
+        document.title = this._titreInitial;
+        this._titreInitial = null;
+      }
+      this._nettoyer = null;
+      if (viderCarnet) {
+        const carnet = $('#carnet');
+        if (carnet) vider(carnet);
+      }
+    };
+
+    const surAfterPrint = () => remettre(true);
+    this._nettoyer = remettre;
+    window.addEventListener('afterprint', surAfterPrint);
+    if (mql) {
+      if (typeof mql.addEventListener === 'function') mql.addEventListener('change', surMedia);
+      else if (typeof mql.addListener === 'function') mql.addListener(surMedia);
+    }
+    minuteur = setTimeout(() => remettre(true), 10000);
+
+    try {
+      window.print();
+    } catch (e) {
+      remettre(true);
+      throw e;
+    }
   }
 };
 
 const EcranAnimal = {
   animal: null,       // l'animal affiché
   section: 'identite',
+  _tour: 0,
+  _tourContenu: 0,
 
   /* ---------- Affichage général ---------- */
   async afficher(id, section) {
+    const tour = ++this._tour;
+    const tourContenu = ++this._tourContenu;
     const animal = await BD.lire('animaux', id);
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
     if (!animal) {
       UI.annoncer('Cet animal n’existe plus.', 'erreur');
       return Nav.remplacer({ vue: 'accueil' });
     }
+    if ((!this.animal || this.animal.id !== id) && typeof EcranSante !== 'undefined') {
+      EcranSante.reinitialiserFiltre();
+    }
     this.animal = animal;
     this.section = SECTIONS.some((s) => s.cle === section) ? section : 'identite';
-    $('#animal-titre').textContent = animal.nom;
+    $('#animal-titre').textContent = animal.nom || '';
 
     // Résumé en haut : photo, espèce, âge, et l'état « archivé »
     const age = Dates.age(animal.naissance, animal.naissanceApprox);
@@ -71,8 +123,10 @@ const EcranAnimal = {
         el('p', { class: 'carte-detail', text: EcranAccueil.sousTitre(animal) }),
         el('p', { class: 'carte-detail', text: age ? 'Âge : ' + age : 'Âge inconnu' }))));
     if (animal.archive) {
+      const motif = typeof animal.motifArchive === 'string' && animal.motifArchive ? ' (' + animal.motifArchive + ')' : '';
+      const dateArch = animal.dateArchive && Dates.estValide(animal.dateArchive) ? ' le ' + Dates.fr(animal.dateArchive) : '';
       resume.append(el('div', { class: 'encart attention' },
-        el('p', { text: 'Animal archivé' + (animal.motifArchive ? ' (' + animal.motifArchive + ')' : '') + (animal.dateArchive ? ' le ' + Dates.fr(animal.dateArchive) : '') + '. Son historique reste consultable.' }),
+        el('p', { text: 'Animal archivé' + motif + dateArch + '. Son historique reste consultable.' }),
         bouton('Restaurer dans la liste', () => this.restaurer(animal), { classe: 'secondaire', icone: 'restaurer' })));
     }
 
@@ -86,46 +140,70 @@ const EcranAnimal = {
         text: s.texte
       }));
     }
-    await this.afficherContenu();
+    await this._afficherContenuPourTour(tour, tourContenu);
   },
 
   /* Passe d'une partie à l'autre sans changer d'écran */
   async changerSection(cle) {
-    this.section = cle;
-    const etat = { ...history.state, vue: 'animal', id: this.animal.id, section: cle };
-    history.replaceState(etat, '', Nav.adresse(etat));
-    Nav.etat = etat;
-    for (const b of $$('#animal-sections button')) {
-      if (b.dataset.section === cle) b.setAttribute('aria-current', 'true');
-      else b.removeAttribute('aria-current');
+    if (!this.animal) return;
+    try {
+      this.section = cle;
+      const etat = { ...history.state, vue: 'animal', id: this.animal.id, section: cle };
+      history.replaceState(etat, '', Nav.adresse(etat));
+      Nav.etat = etat;
+      for (const b of $$('#animal-sections button')) {
+        if (b.dataset.section === cle) b.setAttribute('aria-current', 'true');
+        else b.removeAttribute('aria-current');
+      }
+      const affiche = await this.afficherContenu();
+      if (!affiche) return;
+      const titre = $('#animal-contenu h2');
+      if (titre) titre.focus();
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
     }
-    await this.afficherContenu();
-    const titre = $('#animal-contenu h2');
-    if (titre) titre.focus();
+  },
+
+  async _afficherContenuPourTour(tourAnimal, tourContenu) {
+    vider($('#animal-contenu'));
+    const a = this.animal;
+    if (!a) return false;
+    const tampon = document.createDocumentFragment();
+    switch (this.section) {
+      case 'identite':         await this.identite(tampon, a); break;
+      case 'alimentation':     this.alimentation(tampon, a); break;
+      case 'poids':            await EcranSante.poids(tampon, a); break;
+      case 'vaccins':          await EcranSante.vaccins(tampon, a); break;
+      case 'antiparasitaires': await EcranSante.antiparasitaires(tampon, a); break;
+      case 'traitements':      await EcranSante.traitements(tampon, a); break;
+      case 'notes':            await EcranSante.notes(tampon, a); break;
+      case 'rdv':              await EcranAgenda.rdv(tampon, a); break;
+      case 'taches':           await EcranAgenda.taches(tampon, a); break;
+      default:                 return false;
+    }
+    if (tourAnimal !== this._tour || tourContenu !== this._tourContenu || ($('#verrou') && !$('#verrou').hidden)) return false;
+    vider($('#animal-contenu')).append(tampon);
+    return true;
   },
 
   /* Remplit la partie choisie */
   async afficherContenu() {
-    const zone = vider($('#animal-contenu'));
-    const a = this.animal;
-    switch (this.section) {
-      case 'identite':         return this.identite(zone, a);
-      case 'alimentation':     return this.alimentation(zone, a);
-      case 'poids':            return EcranSante.poids(zone, a);
-      case 'vaccins':          return EcranSante.vaccins(zone, a);
-      case 'antiparasitaires': return EcranSante.antiparasitaires(zone, a);
-      case 'traitements':      return EcranSante.traitements(zone, a);
-      case 'notes':            return EcranSante.notes(zone, a);
-      case 'rdv':              return EcranAgenda.rdv(zone, a);
-      case 'taches':           return EcranAgenda.taches(zone, a);
-    }
+    return this._afficherContenuPourTour(this._tour, ++this._tourContenu);
   },
 
   /* Recharge l'animal et la partie affichée (après une modification) */
   async rafraichir() {
-    const a = await BD.lire('animaux', this.animal.id);
-    if (a) this.animal = a;
-    await this.afficherContenu();
+    if (!this.animal) return;
+    const tourAnimal = this._tour;
+    const tourContenu = ++this._tourContenu;
+    try {
+      const a = await BD.lire('animaux', this.animal.id);
+      if (tourAnimal !== this._tour || tourContenu !== this._tourContenu || ($('#verrou') && !$('#verrou').hidden)) return;
+      if (a) this.animal = a;
+      await this._afficherContenuPourTour(tourAnimal, tourContenu);
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
   },
 
   /* ---------- Petits outils partagés par toutes les parties ---------- */
@@ -139,7 +217,7 @@ const EcranAnimal = {
   /* Titre de partie + bouton « Ajouter » */
   entete(zone, titre, texteAjout, action) {
     zone.append(el('h2', { tabindex: '-1', text: titre }));
-    if (action && !this.animal.archive) zone.append(bouton(texteAjout, action, { classe: 'principal large', icone: 'plus' }));
+    if (action && !(this.animal && this.animal.archive)) zone.append(bouton(texteAjout, action, { classe: 'principal large', icone: 'plus' }));
   },
 
   /* Une fiche de liste avec « Modifier » et « Supprimer » */
@@ -183,8 +261,10 @@ const EcranAnimal = {
     if (a.vetoId) veto = await BD.lire('veterinaires', a.vetoId);
 
     const copie = (numero, nom) => bouton('Copier', () => UI.copier(numero), { classe: 'secondaire petit-bouton', icone: 'copier', aria: 'Copier le numéro de ' + nom });
-    const naissance = a.naissance
+    const naissance = a.naissance && Dates.estValide(a.naissance)
       ? Dates.fr(a.naissance) + (a.naissanceApprox ? ' (date approximative)' : '') : '';
+    const dateSter = a.dateSterilisation && Dates.estValide(a.dateSterilisation) ? ', le ' + Dates.fr(a.dateSterilisation) : '';
+    const lienTel = veto && veto.telephone ? EcranVeto.lienTelephone(veto.telephone) : null;
     const bloc = el('div', { class: 'carte carte-fiche' },
       this.ligne('Nom', a.nom),
       this.ligne('Espèce', a.espece),
@@ -195,10 +275,10 @@ const EcranAnimal = {
       this.ligne('Âge', Dates.age(a.naissance, a.naissanceApprox)),
       this.ligne('Puce électronique', a.puce, a.puce ? copie(a.puce, 'puce') : null),
       this.ligne('Tatouage', a.tatouage, a.tatouage ? copie(a.tatouage, 'tatouage') : null),
-      this.ligne('Stérilisé', a.sterilise ? 'Oui' + (a.dateSterilisation ? ', le ' + Dates.fr(a.dateSterilisation) : '') : 'Non'),
+      this.ligne('Stérilisé', a.sterilise ? 'Oui' + dateSter : 'Non'),
       this.ligne('Unité de poids', a.unitePoids === 'g' ? 'grammes (g)' : 'kilogrammes (kg)'),
-      veto ? this.ligne('Vétérinaire habituel', veto.nom + (veto.clinique ? ' — ' + veto.clinique : '')) : null,
-      veto && veto.telephone ? el('p', { class: 'ligne' }, EcranVeto.lienTelephone(veto.telephone)) : null,
+      veto ? this.ligne('Vétérinaire habituel', (veto.nom || '') + (veto.clinique ? ' — ' + veto.clinique : '')) : null,
+      lienTel ? el('p', { class: 'ligne' }, lienTel) : null,
       this.ligne('Notes', a.notes)
     );
     zone.append(bloc);
@@ -216,50 +296,62 @@ const EcranAnimal = {
 
   /* ---------- Formulaire d'ajout / de modification ---------- */
   async formulaire(animal) {
-    const vetos = (await BD.tout('veterinaires')).sort((x, y) => x.nom.localeCompare(y.nom, 'fr'));
-    const uniteDefaut = await BD.reglage('unitePoids', 'kg');
-    const a = animal || { unitePoids: uniteDefaut, sexe: 'inconnu' };
-    Formulaire.ouvrir({
-      titre: animal ? 'Modifier ' + animal.nom : 'Nouvel animal',
-      valeurs: a,
-      champs: [
-        { nom: 'nom', label: 'Nom', type: 'texte', requis: true, long: 80 },
-        { nom: 'espece', label: 'Espèce', type: 'texte', suggestions: ESPECES, aide: 'Choisis dans la liste ou tape librement (par exemple : « Tortue »).', long: 80 },
-        { nom: 'race', label: 'Race', type: 'texte', long: 120 },
-        { nom: 'sexe', label: 'Sexe', type: 'radios', options: [{ valeur: 'male', texte: 'Mâle' }, { valeur: 'femelle', texte: 'Femelle' }, { valeur: 'inconnu', texte: 'Je ne sais pas' }] },
-        { nom: 'couleur', label: 'Couleur et signes distinctifs', type: 'texte', long: 300 },
-        { nom: 'naissance', label: 'Date de naissance', type: 'date', pasDansFutur: true, aide: 'L’âge sera calculé tout seul à partir de cette date.' },
-        { nom: 'naissanceApprox', label: 'Date de naissance approximative', type: 'case' },
-        { nom: 'puce', label: 'Numéro de puce électronique', type: 'texte', long: 40, aide: 'En général 15 chiffres.' },
-        { nom: 'tatouage', label: 'Numéro de tatouage', type: 'texte', long: 40 },
-        { nom: 'sterilise', label: 'Stérilisé', type: 'case' },
-        { nom: 'dateSterilisation', label: 'Date de stérilisation', type: 'date', pasDansFutur: true, visibleSi: (v) => v.sterilise },
-        { nom: 'unitePoids', label: 'Unité de poids pour cet animal', type: 'radios', requis: true, options: [{ valeur: 'kg', texte: 'Kilogrammes (kg)' }, { valeur: 'g', texte: 'Grammes (g) — petits animaux' }] },
-        { nom: 'vetoId', label: 'Vétérinaire habituel', type: 'choix', options: [{ valeur: '', texte: vetos.length ? '— Aucun —' : '— Aucun vétérinaire enregistré —' }, ...vetos.map((v) => ({ valeur: v.id, texte: v.nom + (v.clinique ? ' (' + v.clinique + ')' : '') }))], aide: 'Les vétérinaires s’ajoutent dans l’onglet « Vétos » en bas de l’écran.' },
-        { nom: 'photo', label: 'Photo', type: 'photo' },
-        { nom: 'notes', label: 'Notes libres', type: 'zone' }
-      ],
-      valider: (v) => {
-        const e = {};
-        if (v.puce && !/^[0-9A-Za-z\s-]+$/.test(v.puce)) e.puce = 'Seuls les chiffres, lettres, espaces et tirets sont acceptés.';
-        if (v.tatouage && !/^[0-9A-Za-z\s-]+$/.test(v.tatouage)) e.tatouage = 'Seuls les chiffres, lettres, espaces et tirets sont acceptés.';
-        if (v.dateSterilisation && v.naissance && v.dateSterilisation < v.naissance) e.dateSterilisation = 'La stérilisation ne peut pas être avant la naissance.';
-        return e;
-      },
-      enregistrer: async (v) => {
-        const fiche = { ...(animal || { creeLe: Dates.aujourdhui(), archive: false }), ...v };
-        if (v.puce) fiche.puce = v.puce.replace(/\s+/g, ' ');
-        await BD.enregistrer('animaux', fiche);
-        return animal ? 'Fiche de ' + fiche.nom + ' enregistrée.' : fiche.nom + ' a été ajouté.';
-      }
-    });
+    try {
+      const vetos = (await BD.tout('veterinaires')).sort((x, y) => {
+        const nx = (x && typeof x.nom === 'string') ? x.nom : '';
+        const ny = (y && typeof y.nom === 'string') ? y.nom : '';
+        const c = nx.localeCompare(ny, 'fr');
+        if (c !== 0) return c;
+        const ix = String((x && x.id) ?? '');
+        const iy = String((y && y.id) ?? '');
+        return ix < iy ? -1 : ix > iy ? 1 : 0;
+      });
+      const uniteDefaut = await BD.reglage('unitePoids', 'kg');
+      const a = animal || { unitePoids: uniteDefaut, sexe: 'inconnu' };
+      Formulaire.ouvrir({
+        titre: animal ? 'Modifier ' + (animal.nom || '') : 'Nouvel animal',
+        valeurs: a,
+        champs: [
+          { nom: 'nom', label: 'Nom', type: 'texte', requis: true, long: 80 },
+          { nom: 'espece', label: 'Espèce', type: 'texte', suggestions: ESPECES, aide: 'Choisis dans la liste ou tape librement (par exemple : « Tortue »).', long: 80 },
+          { nom: 'race', label: 'Race', type: 'texte', long: 120 },
+          { nom: 'sexe', label: 'Sexe', type: 'radios', options: [{ valeur: 'male', texte: 'Mâle' }, { valeur: 'femelle', texte: 'Femelle' }, { valeur: 'inconnu', texte: 'Je ne sais pas' }] },
+          { nom: 'couleur', label: 'Couleur et signes distinctifs', type: 'texte', long: 300 },
+          { nom: 'naissance', label: 'Date de naissance', type: 'date', pasDansFutur: true, aide: 'L’âge sera calculé tout seul à partir de cette date.' },
+          { nom: 'naissanceApprox', label: 'Date de naissance approximative', type: 'case' },
+          { nom: 'puce', label: 'Numéro de puce électronique', type: 'texte', long: 40, aide: 'En général 15 chiffres.' },
+          { nom: 'tatouage', label: 'Numéro de tatouage', type: 'texte', long: 40 },
+          { nom: 'sterilise', label: 'Stérilisé', type: 'case' },
+          { nom: 'dateSterilisation', label: 'Date de stérilisation', type: 'date', pasDansFutur: true, visibleSi: (v) => v.sterilise },
+          { nom: 'unitePoids', label: 'Unité de poids pour cet animal', type: 'radios', requis: true, options: [{ valeur: 'kg', texte: 'Kilogrammes (kg)' }, { valeur: 'g', texte: 'Grammes (g) — petits animaux' }] },
+          { nom: 'vetoId', label: 'Vétérinaire habituel', type: 'choix', options: [{ valeur: '', texte: vetos.length ? '— Aucun —' : '— Aucun vétérinaire enregistré —' }, ...vetos.map((v) => ({ valeur: v.id, texte: (v.nom || '') + (v.clinique ? ' (' + v.clinique + ')' : '') }))], aide: 'Les vétérinaires s’ajoutent dans l’onglet « Vétos » en bas de l’écran.' },
+          { nom: 'photo', label: 'Photo', type: 'photo' },
+          { nom: 'notes', label: 'Notes libres', type: 'zone' }
+        ],
+        valider: (v) => {
+          const e = {};
+          if (v.puce && !/^[0-9A-Za-z\s-]+$/.test(v.puce)) e.puce = 'Seuls les chiffres, lettres, espaces et tirets sont acceptés.';
+          if (v.tatouage && !/^[0-9A-Za-z\s-]+$/.test(v.tatouage)) e.tatouage = 'Seuls les chiffres, lettres, espaces et tirets sont acceptés.';
+          if (v.dateSterilisation && v.naissance && v.dateSterilisation < v.naissance) e.dateSterilisation = 'La stérilisation ne peut pas être avant la naissance.';
+          return e;
+        },
+        enregistrer: async (v) => {
+          const fiche = { ...(animal || { creeLe: Dates.aujourdhui(), archive: false }), ...v };
+          if (v.puce) fiche.puce = v.puce.replace(/\s+/g, ' ');
+          await BD.enregistrer('animaux', fiche);
+          return animal ? 'Fiche de ' + fiche.nom + ' enregistrée.' : fiche.nom + ' a été ajouté.';
+        }
+      });
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
   },
 
   /* ---------- Archiver / restaurer ---------- */
   formulaireArchive(animal) {
     Formulaire.ouvrir({
-      titre: 'Archiver ' + animal.nom,
-      intro: animal.nom + ' quittera la liste principale. Tout son historique sera conservé dans « Animaux archivés », et tu pourras le restaurer à tout moment.',
+      titre: 'Archiver ' + (animal.nom || ''),
+      intro: (animal.nom || 'Cet animal') + ' quittera la liste principale. Tout son historique sera conservé dans « Animaux archivés », et tu pourras le restaurer à tout moment.',
       texteBouton: 'Archiver',
       valeurs: { dateArchive: Dates.aujourdhui() },
       champs: [
@@ -269,10 +361,17 @@ const EcranAnimal = {
         { nom: 'precision', label: 'Précise', type: 'texte', long: 120, visibleSi: (v) => v.motif === 'autre' },
         { nom: 'dateArchive', label: 'Date', type: 'date', requis: true, pasDansFutur: true }
       ],
+      valider: (v) => {
+        const e = {};
+        if (v.dateArchive && animal.naissance && v.dateArchive < animal.naissance) {
+          e.dateArchive = 'La date d’archivage ne peut pas être avant la naissance (' + Dates.fr(animal.naissance) + ').';
+        }
+        return e;
+      },
       enregistrer: async (v) => {
         const fiche = { ...animal, archive: true, dateArchive: v.dateArchive, motifArchive: v.motif === 'autre' ? (v.precision || 'autre raison') : v.motif };
         await BD.enregistrer('animaux', fiche);
-        return animal.nom + ' a été archivé.';
+        return (animal.nom || 'Cet animal') + ' a été archivé.';
       }
     });
   },
@@ -335,56 +434,75 @@ const EcranAnimal = {
      fenêtre d'impression du téléphone. Là, on peut choisir « Enregistrer
      au format PDF ». La mise en page vient du fichier impression.css. */
   async imprimerCarnet(a) {
-    const [pesees, vaccins, antip, traitements, rdv, notes] = await Promise.all(
-      ['pesees', 'vaccins', 'antiparasitaires', 'traitements', 'rdv', 'notes'].map((m) => BD.parAnimal(m, a.id)));
-    const veto = a.vetoId ? await BD.lire('veterinaires', a.vetoId) : null;
-    const parDate = (champ) => (x, y) => ((x[champ] || '') < (y[champ] || '') ? 1 : -1);   // plus récent d'abord
+    const estVerrouille = () => (typeof Verrou !== 'undefined' && Verrou._promesse) || ($('#verrou') && !$('#verrou').hidden);
+    if (estVerrouille()) return;
+    try {
+      const [pesees, vaccins, antip, traitements, rdv, notes] = await Promise.all(
+        ['pesees', 'vaccins', 'antiparasitaires', 'traitements', 'rdv', 'notes'].map((m) => BD.parAnimal(m, a.id)));
+      const veto = a.vetoId ? await BD.lire('veterinaires', a.vetoId) : null;
+      if (estVerrouille()) return;
+      const parDate = (champ) => (x, y) => {
+        const vx = (x && x[champ]) || '';
+        const vy = (y && y[champ]) || '';
+        if (vx !== vy) return vx < vy ? 1 : -1;
+        const ix = String((x && x.id) ?? '');
+        const iy = String((y && y.id) ?? '');
+        return ix < iy ? 1 : ix > iy ? -1 : 0;
+      };
 
-    const carnet = vider($('#carnet'));
-    const tableau = (entetes, lignes) => {
-      if (!lignes.length) return el('p', { class: 'vide', text: 'Aucune donnée.' });
-      return el('table', {},
-        el('thead', {}, el('tr', {}, entetes.map((t) => el('th', { text: t })))),
-        el('tbody', {}, lignes.map((l) => el('tr', {}, l.map((c) => el('td', { text: c || '' }))))));
-    };
-    const section = (titre, contenu) => el('section', { class: 'carnet-section' }, el('h2', { text: titre }), contenu);
+      const carnet = vider($('#carnet'));
+      const tableau = (entetes, lignes) => {
+        if (!lignes.length) return el('p', { class: 'vide', text: 'Aucune donnée.' });
+        return el('table', {},
+          el('thead', {}, el('tr', {}, entetes.map((t) => el('th', { text: t })))),
+          el('tbody', {}, lignes.map((l) => el('tr', {}, l.map((c) => el('td', { text: c || '' }))))));
+      };
+      const section = (titre, contenu) => el('section', { class: 'carnet-section' }, el('h2', { text: titre }), contenu);
 
-    const photo = a.photo ? el('img', { class: 'carnet-photo', alt: '' }) : null;
-    if (photo) photo.src = a.photo;
-    const unite = a.unitePoids === 'g' ? 'g' : 'kg';
+      const photo = a.photo && imageValide(a.photo) ? el('img', { class: 'carnet-photo', alt: '' }) : null;
+      if (photo) photo.src = a.photo;
+      const unite = a.unitePoids === 'g' ? 'g' : 'kg';
+      const dateNaissance = a.naissance && Dates.estValide(a.naissance)
+        ? Dates.fr(a.naissance) + (a.naissanceApprox ? ' (approximative)' : '') + ' — ' + Dates.age(a.naissance, a.naissanceApprox) : '';
+      const dateSter = a.dateSterilisation && Dates.estValide(a.dateSterilisation) ? ', le ' + Dates.fr(a.dateSterilisation) : '';
 
-    carnet.append(
-      el('header', { class: 'carnet-entete' },
-        el('div', {},
-          el('p', { class: 'carnet-sur-titre', text: 'Carnet de santé' }),
-          el('h1', { text: a.nom }),
-          el('p', { text: 'Édité le ' + Dates.fr(Dates.aujourdhui()) + ' avec Omni-Animalia' })),
-        photo),
-      section('Identité', el('div', { class: 'carnet-identite' },
-        this.ligne('Espèce', a.espece), this.ligne('Race', a.race), this.ligne('Sexe', NOMS_SEXE[a.sexe]),
-        this.ligne('Couleur, signes distinctifs', a.couleur),
-        this.ligne('Naissance', a.naissance ? Dates.fr(a.naissance) + (a.naissanceApprox ? ' (approximative)' : '') + ' — ' + Dates.age(a.naissance, a.naissanceApprox) : ''),
-        this.ligne('Puce électronique', a.puce), this.ligne('Tatouage', a.tatouage),
-        this.ligne('Stérilisé', a.sterilise ? 'Oui' + (a.dateSterilisation ? ', le ' + Dates.fr(a.dateSterilisation) : '') : 'Non'),
-        veto ? this.ligne('Vétérinaire habituel', [veto.nom, veto.clinique, veto.telephone].filter(Boolean).join(' — ')) : null,
-        this.ligne('Allergies, aliments à éviter', a.alimEviter),
-        this.ligne('Notes', a.notes))),
-      section('Poids', tableau(['Date', 'Poids', 'Note'],
-        pesees.sort(parDate('date')).map((p) => [Dates.fr(p.date), UI.nombre(Graphique.convertir(p.grammes, unite)) + ' ' + unite, p.note]))),
-      section('Vaccins', tableau(['Date', 'Vaccin', 'Prochain rappel', 'Vétérinaire', 'Lot'],
-        vaccins.sort(parDate('date')).map((v) => [Dates.fr(v.date), v.nom, v.rappel ? Dates.fr(v.rappel) : '', v.veterinaire, v.lot]))),
-      section('Vermifuges et antiparasitaires', tableau(['Date', 'Type', 'Produit', 'Dose', 'Prochaine prise'],
-        antip.sort(parDate('date')).map((x) => [Dates.fr(x.date), EcranSante.NOMS_AP[x.type], x.produit, x.dose, x.prochaine ? Dates.fr(x.prochaine) : '']))),
-      section('Traitements', tableau(['Médicament', 'Dose', 'Fréquence', 'Début', 'Fin', 'Statut'],
-        traitements.sort(parDate('debut')).map((t) => [t.nom, t.dose, t.frequence, t.debut ? Dates.fr(t.debut) : '', t.fin ? Dates.fr(t.fin) : '', t.statut === 'termine' ? 'Terminé' : 'En cours']))),
-      section('Rendez-vous vétérinaires', tableau(['Date', 'Motif', 'Vétérinaire', 'Compte rendu'],
-        rdv.sort(parDate('date')).map((r) => [Dates.frHeure(r.date, r.heure), r.motif, r.veterinaire, r.compteRendu]))),
-      section('Notes de santé', tableau(['Date', 'Type', 'Note'],
-        notes.sort(parDate('date')).map((n) => [Dates.fr(n.date), EcranSante.NOMS_NOTES[n.categorie] || '',
-          (n.texte || '') + (n.pieces && n.pieces.length ? ' [' + n.pieces.length + ' document(s) joint(s) dans l’application]' : '')]))),
-      el('footer', { class: 'carnet-pied', text: 'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire. — Omni-Animalia, © 2026 Ferrus Dantioch' })
-    );
+      carnet.append(
+        el('header', { class: 'carnet-entete' },
+          el('div', {},
+            el('p', { class: 'carnet-sur-titre', text: 'Carnet de santé' }),
+            el('h1', { text: a.nom || '' }),
+            el('p', { text: 'Édité le ' + Dates.fr(Dates.aujourdhui()) + ' avec Omni-Animalia' })),
+          photo),
+        section('Identité', el('div', { class: 'carnet-identite' },
+          this.ligne('Espèce', a.espece), this.ligne('Race', a.race), this.ligne('Sexe', NOMS_SEXE[a.sexe]),
+          this.ligne('Couleur, signes distinctifs', a.couleur),
+          this.ligne('Naissance', dateNaissance),
+          this.ligne('Puce électronique', a.puce), this.ligne('Tatouage', a.tatouage),
+          this.ligne('Stérilisé', a.sterilise ? 'Oui' + dateSter : 'Non'),
+          veto ? this.ligne('Vétérinaire habituel', [veto.nom, veto.clinique, veto.telephone].filter(Boolean).join(' — ')) : null,
+          this.ligne('Allergies, aliments à éviter', a.alimEviter),
+          this.ligne('Notes', a.notes))),
+        section('Poids', tableau(['Date', 'Poids', 'Note'],
+          pesees.sort(parDate('date')).map((p) => [Dates.fr(p.date), typeof p.grammes === 'number' && Number.isFinite(p.grammes) ? UI.nombre(Graphique.convertir(p.grammes, unite)) + ' ' + unite : '', p.note]))),
+        section('Vaccins', tableau(['Date', 'Vaccin', 'Prochain rappel', 'Vétérinaire', 'Lot'],
+          vaccins.sort(parDate('date')).map((v) => [Dates.fr(v.date), v.nom, v.rappel ? Dates.fr(v.rappel) : '', v.veterinaire, v.lot]))),
+        section('Vermifuges et antiparasitaires', tableau(['Date', 'Type', 'Produit', 'Dose', 'Prochaine prise'],
+          antip.sort(parDate('date')).map((x) => [Dates.fr(x.date), Object.prototype.hasOwnProperty.call(EcranSante.NOMS_AP, x.type) ? EcranSante.NOMS_AP[x.type] : '', x.produit, x.dose, x.prochaine ? Dates.fr(x.prochaine) : '']))),
+        section('Traitements', tableau(['Médicament', 'Dose', 'Fréquence', 'Début', 'Fin', 'Statut'],
+          traitements.sort(parDate('debut')).map((t) => [t.nom, t.dose, t.frequence, t.debut ? Dates.fr(t.debut) : '', t.fin ? Dates.fr(t.fin) : '', t.statut === 'termine' ? 'Terminé' : 'En cours']))),
+        section('Rendez-vous vétérinaires', tableau(['Date', 'Motif', 'Vétérinaire', 'Compte rendu'],
+          rdv.sort(parDate('date')).map((r) => [Dates.frHeure(r.date, r.heure), r.motif, r.veterinaire, r.compteRendu]))),
+        section('Notes de santé', tableau(['Date', 'Type', 'Note'],
+          notes.sort(parDate('date')).map((n) => [Dates.fr(n.date), Object.prototype.hasOwnProperty.call(EcranSante.NOMS_NOTES, n.categorie) ? EcranSante.NOMS_NOTES[n.categorie] : '',
+            (n.texte || '') + (Array.isArray(n.pieces) && n.pieces.length ? ' [' + n.pieces.length + ' document(s) joint(s) dans l’application]' : '')]))),
+        el('footer', { class: 'carnet-pied', text: 'Cette application sert à organiser tes informations. Elle ne remplace pas l’avis d’un vétérinaire. — Omni-Animalia, © 2026 Ferrus Dantioch' })
+      );
 
-    Impression.lancer('Carnet de santé - ' + a.nom);
+      Impression.lancer('Carnet de santé - ' + (a.nom || ''));
+    } catch (e) {
+      const c = $('#carnet');
+      if (c) vider(c);
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
   }
 };

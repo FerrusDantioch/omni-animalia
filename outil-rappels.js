@@ -22,11 +22,14 @@ const Rappels = {
 
   /* Calcule tous les rappels. « d » contient toutes les données
      (comme renvoyé par BD.toutLire()). Renvoie une liste triée par date. */
-  calculer(d, reference) {
-    const aujourdhui = reference || Dates.aujourdhui();
-    const actifs = new Map(d.animaux.filter((a) => !a.archive).map((a) => [a.id, a]));
+  calculer(donnees, reference) {
+    const d = donnees && typeof donnees === 'object' ? donnees : {};
+    const aujourdhui = Dates.estValide(reference) ? reference : Dates.aujourdhui();
+    const animaux = Array.isArray(d.animaux) ? d.animaux : [];
+    const actifs = new Map(animaux.filter((a) => a && !a.archive).map((a) => [a.id, a]));
     const liste = [];
     const ajouter = (fiche, date, type, titre, section, extra) => {
+      if (!fiche) return;
       const animal = actifs.get(fiche.animalId);
       if (!animal || !Dates.estValide(date)) return;
       liste.push({
@@ -39,32 +42,43 @@ const Rappels = {
     // Garde seulement la fiche la plus récente pour chaque « clé »
     const dernieres = (fiches, cle) => {
       const groupes = new Map();
-      for (const f of fiches) {
+      for (const f of Array.isArray(fiches) ? fiches : []) {
+        if (!f || !Dates.estValide(f.date)) continue;
         const k = f.animalId + '|' + cle(f);
         const actuel = groupes.get(k);
-        if (!actuel || f.date > actuel.date) groupes.set(k, f);
+        if (!actuel || f.date > actuel.date || (f.date === actuel.date && String(f.id ?? '') > String(actuel.id ?? ''))) {
+          groupes.set(k, f);
+        }
       }
       return [...groupes.values()];
     };
 
-    for (const v of dernieres(d.vaccins, (f) => f.nom.trim().toLowerCase())) {
-      if (v.rappel) ajouter(v, v.rappel, 'vaccin', 'Rappel de vaccin : ' + v.nom, 'vaccins', { magasin: 'vaccins' });
+    for (const v of dernieres(d.vaccins, (f) => (f.nom || '').trim().toLowerCase())) {
+      if (v.rappel) ajouter(v, v.rappel, 'vaccin', 'Rappel de vaccin : ' + (v.nom || ''), 'vaccins', { magasin: 'vaccins' });
     }
-    const nomsAP = { vermifuge: 'Vermifuge', 'anti-puces': 'Anti-puces', 'anti-tiques': 'Anti-tiques', autre: 'Antiparasitaire' };
-    for (const a of dernieres(d.antiparasitaires, (f) => (f.type === 'autre' ? 'autre:' + (f.produit || '').trim().toLowerCase() : f.type))) {
-      if (a.prochaine) ajouter(a, a.prochaine, 'antiparasitaire', nomsAP[a.type] + (a.produit ? ' : ' + a.produit : ''), 'antiparasitaires', { magasin: 'antiparasitaires' });
+    const nomsAP = Object.assign(Object.create(null), {
+      vermifuge: 'Vermifuge', 'anti-puces': 'Anti-puces', 'anti-tiques': 'Anti-tiques', autre: 'Antiparasitaire'
+    });
+    for (const a of dernieres(d.antiparasitaires, (f) => (f.type === 'autre' ? 'autre:' + (f.produit || '').trim().toLowerCase() : (f.type || '')))) {
+      if (a.prochaine) ajouter(a, a.prochaine, 'antiparasitaire', (nomsAP[a.type] || 'Antiparasitaire') + (a.produit ? ' : ' + a.produit : ''), 'antiparasitaires', { magasin: 'antiparasitaires' });
     }
-    for (const t of d.traitements) {
-      if (t.statut === 'en-cours' && t.fin) ajouter(t, t.fin, 'traitement', 'Fin prévue du traitement : ' + t.nom, 'traitements', { magasin: 'traitements' });
+    for (const t of Array.isArray(d.traitements) ? d.traitements : []) {
+      if (t && t.statut === 'en-cours' && t.fin) ajouter(t, t.fin, 'traitement', 'Fin prévue du traitement : ' + (t.nom || ''), 'traitements', { magasin: 'traitements' });
     }
-    for (const r of d.rdv) {
-      if (r.date >= aujourdhui) ajouter(r, r.date, 'rdv', 'Rendez-vous vétérinaire' + (r.motif ? ' : ' + r.motif : ''), 'rdv', { magasin: 'rdv', heure: r.heure });
+    for (const r of Array.isArray(d.rdv) ? d.rdv : []) {
+      if (r && r.date >= aujourdhui) ajouter(r, r.date, 'rdv', 'Rendez-vous vétérinaire' + (r.motif ? ' : ' + r.motif : ''), 'rdv', { magasin: 'rdv', heure: r.heure });
     }
-    for (const t of d.taches) {
-      if (!t.fait && t.echeance) ajouter(t, t.echeance, 'tache', t.titre, 'taches', { magasin: 'taches' });
+    for (const t of Array.isArray(d.taches) ? d.taches : []) {
+      if (t && !t.fait && t.echeance) ajouter(t, t.echeance, 'tache', t.titre, 'taches', { magasin: 'taches' });
     }
 
-    return liste.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.heure || '') < (b.heure || '') ? -1 : 1));
+    const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+    return liste.sort((a, b) => (
+      cmp(a.date, b.date)
+      || cmp(a.heure || '', b.heure || '')
+      || cmp(String(a.type || ''), String(b.type || ''))
+      || cmp(String(a.id || ''), String(b.id || ''))
+    ));
   },
 
   /* Range les rappels dans les quatre groupes de la page « Rappels » */
@@ -83,8 +97,10 @@ const Rappels = {
   /* Pour les badges des cartes d'animaux : { animalId: { retard, bientot } }
      « bientôt » = aujourd'hui ou dans les 7 prochains jours. */
   compterParAnimal(liste) {
-    const compte = {};
+    const compte = Object.create(null);
+    if (!Array.isArray(liste)) return compte;
     for (const r of liste) {
+      if (!r || !r.animalId) continue;
       const c = compte[r.animalId] || (compte[r.animalId] = { retard: 0, bientot: 0 });
       if (r.ecart < 0) c.retard++;
       else if (r.ecart <= 7) c.bientot++;

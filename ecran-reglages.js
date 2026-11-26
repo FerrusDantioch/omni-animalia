@@ -10,6 +10,7 @@
 'use strict';
 
 const EcranReglages = {
+  _tour: 0,
 
   /* Un bloc de réglages avec son titre */
   bloc(titre, ...contenu) {
@@ -29,23 +30,35 @@ const EcranReglages = {
   },
 
   async afficher() {
-    const zone = vider($('#reglages-contenu'));
+    const tour = ++this._tour;
     const theme = await BD.reglage('theme', 'omni');
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
     const taille = await BD.reglage('taille', 'normal');
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
     const unite = await BD.reglage('unitePoids', 'kg');
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
     const derniere = await BD.reglage('derniereSauvegarde', null);
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
     const mdp = await Verrou.actif();
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
     const exemple = await Sauvegarde.exemplePresent();
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
+
+    const frag = document.createDocumentFragment();
 
     // 1. Apparence
-    zone.append(this.bloc('Apparence',
+    frag.append(this.bloc('Apparence',
       this.radios('theme', 'Thème', [
         { valeur: 'omni', texte: 'Omni-système (violet sur fond sombre)' },
         { valeur: 'sombre', texte: 'Sombre (bleu-gris)' },
         { valeur: 'clair', texte: 'Clair' }
       ], theme, async (t) => {
-        Theme.appliquer(t);
-        await BD.definirReglage('theme', t);
+        try {
+          Theme.appliquer(t);
+          await BD.definirReglage('theme', t);
+        } catch (e) {
+          UI.annoncer(UI.messageErreur(e), 'erreur');
+        }
       }),
       el('h3', { class: 'sous-titre', text: 'Taille du texte' }),
       this.radios('taille', 'Taille du texte', [
@@ -53,19 +66,27 @@ const EcranReglages = {
         { valeur: 'grand', texte: 'Grande' },
         { valeur: 'tresgrand', texte: 'Très grande' }
       ], taille, async (z) => {
-        Taille.appliquer(z);
-        await BD.definirReglage('taille', z);
+        try {
+          Taille.appliquer(z);
+          await BD.definirReglage('taille', z);
+        } catch (e) {
+          UI.annoncer(UI.messageErreur(e), 'erreur');
+        }
       })));
 
     // 2. Unité de poids
-    zone.append(this.bloc('Unité de poids par défaut',
+    frag.append(this.bloc('Unité de poids par défaut',
       el('p', { class: 'aide', text: 'Proposée pour chaque nouvel animal. Elle peut ensuite être changée animal par animal (dans sa fiche d’identité).' }),
       this.radios('unite', 'Unité de poids', [
         { valeur: 'kg', texte: 'Kilogrammes (kg)' },
         { valeur: 'g', texte: 'Grammes (g)' }
       ], unite, async (u) => {
-        await BD.definirReglage('unitePoids', u);
-        UI.annoncer('Unité par défaut : ' + (u === 'g' ? 'grammes' : 'kilogrammes') + '.');
+        try {
+          await BD.definirReglage('unitePoids', u);
+          UI.annoncer('Unité par défaut : ' + (u === 'g' ? 'grammes' : 'kilogrammes') + '.');
+        } catch (e) {
+          UI.annoncer(UI.messageErreur(e), 'erreur');
+        }
       })));
 
     // 3. Sauvegarde et restauration
@@ -75,7 +96,7 @@ const EcranReglages = {
       choixFichier.value = '';
       if (f) this.restaurer(f);
     });
-    zone.append(this.bloc('Sauvegarde et restauration',
+    frag.append(this.bloc('Sauvegarde et restauration',
       el('div', { class: 'encart attention' },
         el('p', { text: 'Tes données restent uniquement sur cet appareil. Si le téléphone est perdu, réinitialisé, ou si les données du navigateur sont effacées, elles disparaissent.' }),
         el('p', { text: 'Fais une sauvegarde régulièrement, et garde le fichier ailleurs (ordinateur, clé USB, courriel à toi-même…).' })),
@@ -101,10 +122,10 @@ const EcranReglages = {
       boutonsMdp.append(bouton('Activer un mot de passe', () => this.formulaireMdp('activer'), { classe: 'secondaire large', icone: 'cadenas' }));
     }
     blocMdp.append(boutonsMdp);
-    zone.append(blocMdp);
+    frag.append(blocMdp);
 
     // 5. Exemple de démonstration
-    zone.append(this.bloc('Essayer avec un exemple',
+    frag.append(this.bloc('Essayer avec un exemple',
       el('p', { class: 'aide', text: 'Ajoute un chien et un chat inventés (avec pesées, vaccins, rappels…) pour découvrir l’application. Tes vraies données ne sont pas touchées, et l’exemple se retire en un clic.' }),
       exemple
         ? bouton('Supprimer l’exemple', () => this.supprimerExemple(), { classe: 'secondaire large', icone: 'poubelle', id: 'bouton-exemple' })
@@ -112,30 +133,33 @@ const EcranReglages = {
 
     // 6. Stockage
     const infoStockage = el('p', { class: 'aide', text: 'Calcul de la place utilisée…' });
-    zone.append(this.bloc('Stockage sur l’appareil',
+    frag.append(this.bloc('Stockage sur l’appareil',
       el('p', { text: App.stockageProtege === true
         ? 'Stockage protégé : oui. Le navigateur ne doit pas effacer tes données pour faire de la place.'
         : 'Stockage protégé : non. En cas de manque de place, le navigateur pourrait effacer les données. Installer l’application sur l’écran d’accueil aide à obtenir cette protection. Dans tous les cas, fais des sauvegardes.' }),
       infoStockage));
-    this.majStockage(infoStockage);
 
     // 7. À propos
-    zone.append(this.bloc('Informations',
+    frag.append(this.bloc('Informations',
       bouton('À propos d’Omni-Animalia', () => Nav.aller({ vue: 'apropos' }), { classe: 'secondaire large', icone: 'info' })));
 
     // 8. Tout supprimer
-    zone.append(this.bloc('Zone sensible',
+    frag.append(this.bloc('Zone sensible',
       el('p', { class: 'aide', text: 'Efface tous les animaux, tout leur historique, les vétérinaires et les réglages de ce téléphone.' }),
       bouton('Supprimer toutes les données', () => this.toutSupprimer(), { classe: 'danger large', icone: 'poubelle' })));
+
+    vider($('#reglages-contenu')).append(frag);
+    this.majStockage(infoStockage);
   },
 
   async majStockage(p) {
     try {
-      if (!navigator.storage || !navigator.storage.estimate) { p.textContent = ''; return; }
+      if (!navigator.storage || !navigator.storage.estimate) { if (p.isConnected) p.textContent = ''; return; }
       const e = await navigator.storage.estimate();
+      if (!p.isConnected) return;
       const mo = (n) => UI.nombre(n / (1024 * 1024), 1) + ' Mo';
       p.textContent = 'Place utilisée : environ ' + mo(e.usage || 0) + ' (application et données).';
-    } catch (err) { p.textContent = ''; }
+    } catch (err) { if (p.isConnected) p.textContent = ''; }
   },
 
   afficherApropos() { /* tout est déjà écrit dans index.html */ },
@@ -213,6 +237,8 @@ const EcranReglages = {
     }
     try {
       const res = await Sauvegarde.importer(lu, mode);
+      if (typeof EcranSante !== 'undefined') EcranSante.reinitialiserFiltre();
+      if (mode === 'remplacer' && typeof EcranAnimal !== 'undefined') EcranAnimal.animal = null;
       if (lu.reglages.theme) Theme.appliquer(lu.reglages.theme);
       if (lu.reglages.taille) Taille.appliquer(lu.reglages.taille);
       let message = 'Restauration terminée (' + res.ajoutees + ' fiche(s)).';
@@ -234,12 +260,15 @@ const EcranReglages = {
     const champActuel = { nom: 'actuel', label: 'Mot de passe actuel', type: 'motdepasse', requis: true, autocomplete: 'current-password' };
     const verifierNouveau = (v) => {
       const e = {};
-      if (v.nouveau && v.nouveau.length < 4) e.nouveau = 'Le mot de passe doit faire au moins 4 caractères.';
+      if (v.nouveau && !v.nouveau.trim()) e.nouveau = 'Le mot de passe ne peut pas contenir uniquement des espaces.';
+      else if (v.nouveau && v.nouveau.length < 4) e.nouveau = 'Le mot de passe doit faire au moins 4 caractères.';
       if (v.nouveau && v.confirmation && v.nouveau !== v.confirmation) e.confirmation = 'Les deux mots de passe ne sont pas identiques.';
       return e;
     };
     const verifierActuel = async (v) => {
-      if (!(await Verrou.verifier(v.actuel))) throw BD.erreur('Le mot de passe actuel est incorrect. Rien n’a été modifié.');
+      if (!(await Verrou.verifierAvecDelai(v.actuel))) {
+        throw BD.erreur('Le mot de passe actuel est incorrect. Rien n’a été modifié.');
+      }
     };
 
     if (action === 'activer') {
@@ -259,7 +288,7 @@ const EcranReglages = {
       Formulaire.ouvrir({
         titre: 'Désactiver le mot de passe', texteBouton: 'Désactiver',
         champs: [champActuel],
-        enregistrer: async (v) => { await verifierActuel(v); await BD.definirReglage('motDePasse', null); return 'Mot de passe désactivé.'; }
+        enregistrer: async (v) => { await verifierActuel(v); await BD.definirReglage('motDePasse', null); Verrou.reinitialiserEchecs(); return 'Mot de passe désactivé.'; }
       });
     }
   },
@@ -286,6 +315,8 @@ const EcranReglages = {
     if (!ok) return;
     try {
       await Sauvegarde.supprimerExemple();
+      if (typeof EcranSante !== 'undefined') EcranSante.reinitialiserFiltre();
+      if (typeof EcranAnimal !== 'undefined' && EcranAnimal.animal && EcranAnimal.animal.exemple) EcranAnimal.animal = null;
       UI.annoncer('Exemple supprimé.');
       await this.afficher();
       Nav.majPastille();
@@ -313,6 +344,8 @@ const EcranReglages = {
     if (!ok2) return;
     try {
       await BD.toutEffacer();
+      if (typeof EcranSante !== 'undefined') EcranSante.reinitialiserFiltre();
+      if (typeof EcranAnimal !== 'undefined') EcranAnimal.animal = null;
       await BD.definirReglage('avertissementVu', true);
       await BD.definirReglage('debutSuivi', Dates.aujourdhui());
       Theme.appliquer('omni');

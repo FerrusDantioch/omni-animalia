@@ -11,7 +11,7 @@
 /* ⚠️ À augmenter d'un cran (v1 → v2…) à CHAQUE modification d'un fichier
    de la liste FICHIERS ci-dessous (et VERSION dans app.js). Sinon, les
    téléphones qui ont déjà ouvert l'application gardent l'ancienne version. */
-const CACHE = 'omni-animalia-v7';
+const CACHE = 'omni-animalia-v9';
 
 /* Le début du nom de cache propre à Omni-Animalia. Toutes les applications
    de ferrusdantioch.github.io partagent le même espace de caches : on ne
@@ -24,6 +24,7 @@ const PREFIXE = 'omni-animalia-';
 const FICHIERS = [
   './',
   './index.html',
+  './init-theme.js',
   './styles.css',
   './impression.css',
   './outil-dates.js',
@@ -56,15 +57,21 @@ const FICHIERS = [
    { cache: 'reload' } oblige à reprendre chaque fichier sur le serveur,
    sans passer par la mémoire temporaire du navigateur : sinon, deux
    mises à jour publiées coup sur coup pourraient mélanger les versions. */
+let remplissageEnCours = null;
+
 function remplirCache() {
-  return caches.open(CACHE)
-    .then((c) => c.addAll(FICHIERS.map((f) => new Request(f, { cache: 'reload' }))));
+  if (remplissageEnCours) return remplissageEnCours;
+  remplissageEnCours = caches.open(CACHE)
+    .then((c) => c.addAll(FICHIERS.map((f) => new Request(f, { cache: 'reload' }))))
+    .finally(() => { remplissageEnCours = null; });
+  return remplissageEnCours;
 }
 
 /* Vérifie que tous les fichiers sont bien dans le cache, et le remplit à
    nouveau s'il en manque (une autre application du même site a pu
    effacer nos caches). */
 function verifierCache() {
+  if (remplissageEnCours) return remplissageEnCours;
   return caches.open(CACHE)
     .then((c) => Promise.all(FICHIERS.map((f) => c.match(f))))
     .then((trouves) => (trouves.some((r) => !r) ? remplirCache() : null))
@@ -114,8 +121,25 @@ self.addEventListener('fetch', (e) => {
       c.match(e.request, { ignoreSearch: true }).then((enCache) => {
         if (enCache) return enCache;
         return fetch(e.request).then((rep) => {
-          if (rep && rep.status === 200 && rep.type === 'basic') c.put(e.request, rep.clone());
+          if (rep && rep.status === 200 && rep.type === 'basic') {
+            c.put(e.request, rep.clone()).catch(() => {});
+          }
           return rep;
+        }).catch(() => {
+          if (e.request.mode === 'navigate') {
+            return c.match('./index.html')
+              .then((r) => r || c.match('./'))
+              .then((r) => {
+                if (!r) return Response.error();
+                const scopeUrl = new URL(self.registration.scope);
+                const reqUrl = new URL(e.request.url);
+                if (reqUrl.pathname !== scopeUrl.pathname && reqUrl.pathname !== scopeUrl.pathname + 'index.html') {
+                  return Response.redirect(self.registration.scope, 302);
+                }
+                return r;
+              });
+          }
+          return Response.error();
         });
       }))
   );

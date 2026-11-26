@@ -69,6 +69,9 @@ function imageValide(v) {
   return typeof v === 'string' && v.length <= 8000000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v);
 }
 const MAX_PIECES = 6;          // documents joints au plus par note
+const MAX_PRISES_JOURS = 400;  // jours d'historique de prises au plus par traitement
+const ID_VALIDE = /^[A-Za-z0-9._-]{1,128}$/;
+const CHAMPS_ID = new Set(['id', 'animalId', 'vetoId', 'suivanteId']);
 
 /* Les magasins dont chaque fiche appartient à un animal */
 const MAGASINS_LIES = ['pesees', 'vaccins', 'antiparasitaires', 'traitements', 'rdv', 'notes', 'taches'];
@@ -77,10 +80,14 @@ const MAGASINS_DONNEES = ['animaux', 'veterinaires', ...MAGASINS_LIES];
 /* Nettoie une fiche selon son schéma.
    Renvoie la fiche propre, ou lance une erreur expliquant le problème. */
 function nettoyerFiche(magasin, fiche) {
+  if (!Object.prototype.hasOwnProperty.call(SCHEMAS, magasin)) throw new Error('magasin inconnu');
   const schema = SCHEMAS[magasin];
   if (!fiche || typeof fiche !== 'object' || Array.isArray(fiche)) throw new Error('une fiche n’est pas lisible');
+  const proto = Object.getPrototypeOf(fiche);
+  if (proto !== Object.prototype && proto !== null) throw new Error('une fiche n’est pas lisible');
   const propre = {};
   for (const [champ, type] of Object.entries(schema)) {
+    if (!Object.prototype.hasOwnProperty.call(fiche, champ)) continue;
     const v = fiche[champ];
     if (v === undefined || v === null || v === '') continue;
     if (Array.isArray(type)) {
@@ -88,7 +95,14 @@ function nettoyerFiche(magasin, fiche) {
       propre[champ] = v;
     } else if (type === 't') {
       if (typeof v !== 'string') throw new Error('« ' + champ + ' » devrait être un texte');
-      propre[champ] = v.slice(0, 10000);
+      if (CHAMPS_ID.has(champ)) {
+        if (!ID_VALIDE.test(v)) throw new Error('identifiant incorrect pour « ' + champ + ' »');
+        propre[champ] = v;
+      } else {
+        const t = v.trim();
+        if (!t) continue;
+        propre[champ] = t.slice(0, 10000);
+      }
     } else if (type === 'd') {
       if (!Dates.estValide(v)) throw new Error('date incorrecte pour « ' + champ + ' »');
       propre[champ] = v;
@@ -96,8 +110,13 @@ function nettoyerFiche(magasin, fiche) {
       if (!Dates.heureValide(v)) throw new Error('heure incorrecte pour « ' + champ + ' »');
       propre[champ] = v;
     } else if (type === 'n') {
-      if (typeof v !== 'number' || !isFinite(v) || v < 0) throw new Error('nombre incorrect pour « ' + champ + ' »');
-      propre[champ] = v;
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new Error('nombre incorrect pour « ' + champ + ' »');
+      const val = v === 0 ? 0 : v;
+      if (magasin === 'pesees' && champ === 'grammes' && val <= 0) throw new Error('nombre incorrect pour « ' + champ + ' »');
+      if (magasin === 'taches' && champ === 'recN' && (!Number.isInteger(val) || val < 1)) throw new Error('nombre incorrect pour « ' + champ + ' »');
+      if (magasin === 'taches' && champ === 'recJour' && (!Number.isInteger(val) || val < 1 || val > 31)) throw new Error('nombre incorrect pour « ' + champ + ' »');
+      if (magasin === 'traitements' && champ === 'prisesParJour' && (!Number.isInteger(val) || val < 1 || val > 48)) throw new Error('nombre incorrect pour « ' + champ + ' »');
+      propre[champ] = val;
     } else if (type === 'b') {
       if (typeof v !== 'boolean') throw new Error('« ' + champ + ' » devrait valoir vrai ou faux');
       propre[champ] = v;
@@ -111,8 +130,13 @@ function nettoyerFiche(magasin, fiche) {
     } else if (type === 'prises') {
       // { 'AAAA-MM-JJ': ['08:10', '20:05'], … } : les heures des prises de chaque jour
       if (typeof v !== 'object' || Array.isArray(v)) throw new Error('prises illisibles');
+      const protoPrises = Object.getPrototypeOf(v);
+      if (protoPrises !== Object.prototype && protoPrises !== null) throw new Error('prises illisibles');
+      const jours = Object.keys(v);
+      if (jours.length > MAX_PRISES_JOURS) throw new Error('prises illisibles');
       const prises = {};
-      for (const [jour, heures] of Object.entries(v)) {
+      for (const jour of jours) {
+        const heures = v[jour];
         if (!Dates.estValide(jour) || !Array.isArray(heures) || heures.length > 48 || !heures.every((h) => Dates.heureValide(h))) {
           throw new Error('prises illisibles');
         }
@@ -124,6 +148,27 @@ function nettoyerFiche(magasin, fiche) {
   for (const champ of OBLIGATOIRES[magasin]) {
     if (propre[champ] === undefined) throw new Error('le champ obligatoire « ' + champ + ' » manque');
   }
+  // Cohérence des dates entre champs
+  if (magasin === 'traitements' && propre.debut && propre.fin && propre.fin < propre.debut) {
+    throw new Error('la date de fin précède le début');
+  }
+  if (magasin === 'animaux') {
+    if (propre.naissance && propre.naissance > Dates.aujourdhui()) {
+      throw new Error('la date de naissance est dans le futur');
+    }
+    if (propre.naissance && propre.dateSterilisation && propre.dateSterilisation < propre.naissance) {
+      throw new Error('la stérilisation précède la naissance');
+    }
+    if (propre.naissance && propre.dateArchive && propre.dateArchive < propre.naissance) {
+      throw new Error('la date d’archivage précède la naissance');
+    }
+  }
+  if (magasin === 'vaccins' && propre.date && propre.rappel && propre.rappel <= propre.date) {
+    throw new Error('la date de rappel doit suivre la vaccination');
+  }
+  if (magasin === 'antiparasitaires' && propre.date && propre.prochaine && propre.prochaine <= propre.date) {
+    throw new Error('la prochaine prise doit suivre la prise actuelle');
+  }
   return propre;
 }
 
@@ -133,6 +178,7 @@ const BD = {
   NOM: 'omni-animalia',
   VERSION: 1,
   base: null,
+  _ouverturePromesse: null,
 
   /* Une erreur avec un message déjà compréhensible */
   erreur(message) {
@@ -143,14 +189,19 @@ const BD = {
 
   /* Ouvre la base (et la crée à la toute première utilisation) */
   ouvrir() {
-    return new Promise((ok, echec) => {
+    if (this.base) return Promise.resolve(this.base);
+    if (this._ouverturePromesse) return this._ouverturePromesse;
+    let regle = false;
+    const p = new Promise((ok, echec) => {
       if (!('indexedDB' in window)) {
+        regle = true;
         return echec(this.erreur('Ce navigateur ne permet pas d’enregistrer des données. Essaie avec Chrome, à jour.'));
       }
       let demande;
       try {
         demande = indexedDB.open(this.NOM, this.VERSION);
       } catch (e) {
+        regle = true;
         return echec(this.erreur('La base de données est inaccessible (navigation privée ?).'));
       }
       demande.onupgradeneeded = () => {
@@ -164,14 +215,71 @@ const BD = {
         if (!base.objectStoreNames.contains('reglages')) base.createObjectStore('reglages', { keyPath: 'cle' });
       };
       demande.onsuccess = () => {
-        this.base = demande.result;
+        const db = demande.result;
+        if (regle) {
+          try { db.close(); } catch (e) {}
+          return;
+        }
+        regle = true;
+        if (this._ouverturePromesse === p) this._ouverturePromesse = null;
+        this.base = db;
+        db.onclose = () => {
+          if (this.base === db) this.base = null;
+        };
         // Si une autre fenêtre installe une nouvelle version de la base
-        this.base.onversionchange = () => { this.base.close(); location.reload(); };
-        ok(this.base);
+        db.onversionchange = (ev) => {
+          if (this.base === db) this.base = null;
+          db.close();
+          const formOuvert = typeof Formulaire !== 'undefined' && Boolean(Formulaire.courant);
+          if (ev && ev.newVersion !== null && !formOuvert) {
+            location.reload();
+          } else if (typeof UI !== 'undefined') {
+            const message = formOuvert
+              ? 'Base de données modifiée dans un autre onglet. Recharge la page après avoir enregistré ton formulaire.'
+              : (ev && ev.newVersion === null
+                ? 'Base de données supprimée dans un autre onglet. Recharge la page si nécessaire.'
+                : 'Base de données modifiée dans un autre onglet. Recharge la page si nécessaire.');
+            UI.annoncer(message, 'erreur');
+          }
+        };
+        ok(db);
       };
-      demande.onerror = () => echec(this.erreur('La base de données n’a pas pu s’ouvrir. Ferme puis rouvre l’application. Si le problème continue, vérifie qu’il reste de la place sur le téléphone.'));
-      demande.onblocked = () => echec(this.erreur('L’application est ouverte dans un autre onglet. Ferme les autres onglets puis réessaie.'));
+      demande.onerror = () => {
+        if (regle) return;
+        regle = true;
+        if (this._ouverturePromesse === p) this._ouverturePromesse = null;
+        echec(this.erreur('La base de données n’a pas pu s’ouvrir. Ferme puis rouvre l’application. Si le problème continue, vérifie qu’il reste de la place sur le téléphone.'));
+      };
+      demande.onblocked = () => {
+        if (regle) return;
+        regle = true;
+        if (this._ouverturePromesse === p) this._ouverturePromesse = null;
+        echec(this.erreur('L’application est ouverte dans un autre onglet. Ferme les autres onglets puis réessaie.'));
+      };
     });
+    if (!regle) this._ouverturePromesse = p;
+    return p;
+  },
+
+  /* Garantit une connexion ouverte avant toute opération */
+  async _garantirBase() {
+    if (this.base) return this.base;
+    return this.ouvrir();
+  },
+
+  /* Ouvre une transaction et réouvre la base une fois si la connexion s'est fermée */
+  async _transaction(magasins, mode = 'readonly') {
+    let base = await this._garantirBase();
+    try {
+      return base.transaction(magasins, mode);
+    } catch (e) {
+      if (e && (e.name === 'InvalidStateError' || /closing|closed/i.test(e.message || ''))) {
+        if (this.base === base) this.base = null;
+        base = await this._garantirBase();
+        return base.transaction(magasins, mode);
+      }
+      throw e;
+    }
   },
 
   /* Transforme une « demande » IndexedDB en promesse */
@@ -199,26 +307,40 @@ const BD = {
   },
 
   /* Toutes les fiches d'un magasin */
-  tout(magasin) {
-    return this.attendre(this.base.transaction(magasin).objectStore(magasin).getAll());
+  async tout(magasin) {
+    const tx = await this._transaction(magasin);
+    return this.attendre(tx.objectStore(magasin).getAll());
   },
 
   /* Les fiches d'un magasin qui appartiennent à un animal */
-  parAnimal(magasin, animalId) {
-    const index = this.base.transaction(magasin).objectStore(magasin).index('animalId');
+  async parAnimal(magasin, animalId) {
+    if (typeof animalId !== 'string' || !animalId) return [];
+    const tx = await this._transaction(magasin);
+    const index = tx.objectStore(magasin).index('animalId');
     return this.attendre(index.getAll(animalId));
   },
 
   /* Une fiche précise (ou undefined) */
-  lire(magasin, id) {
-    return this.attendre(this.base.transaction(magasin).objectStore(magasin).get(id));
+  async lire(magasin, id) {
+    const tx = await this._transaction(magasin);
+    return this.attendre(tx.objectStore(magasin).get(id));
   },
 
   /* Ajoute ou remplace une fiche. Lui donne un identifiant si elle n'en a pas. */
   async enregistrer(magasin, fiche) {
-    if (!fiche.id) fiche.id = this.nouvelId();
-    const propre = magasin === 'reglages' ? fiche : nettoyerFiche(magasin, fiche);
-    const tx = this.base.transaction(magasin, 'readwrite');
+    if (!fiche || typeof fiche !== 'object' || Array.isArray(fiche)) {
+      throw this.erreur('une fiche n’est pas lisible');
+    }
+    const proto = Object.getPrototypeOf(fiche);
+    if (proto !== Object.prototype && proto !== null) {
+      throw this.erreur('une fiche n’est pas lisible');
+    }
+    let entree = fiche;
+    if (magasin !== 'reglages' && (fiche.id === undefined || fiche.id === null || fiche.id === '')) {
+      entree = { ...fiche, id: this.nouvelId() };
+    }
+    const propre = magasin === 'reglages' ? entree : nettoyerFiche(magasin, entree);
+    const tx = await this._transaction(magasin, 'readwrite');
     tx.objectStore(magasin).put(propre);
     await this.finTransaction(tx);
     return propre;
@@ -226,14 +348,14 @@ const BD = {
 
   /* Supprime une fiche */
   async supprimer(magasin, id) {
-    const tx = this.base.transaction(magasin, 'readwrite');
+    const tx = await this._transaction(magasin, 'readwrite');
     tx.objectStore(magasin).delete(id);
     await this.finTransaction(tx);
   },
 
   /* Supprime un animal ET tout son historique, en une seule fois */
   async supprimerAnimal(animalId) {
-    const tx = this.base.transaction(['animaux', ...MAGASINS_LIES], 'readwrite');
+    const tx = await this._transaction(['animaux', ...MAGASINS_LIES], 'readwrite');
     tx.objectStore('animaux').delete(animalId);
     for (const nom of MAGASINS_LIES) {
       const index = tx.objectStore(nom).index('animalId');
@@ -247,13 +369,14 @@ const BD = {
 
   /* Lit un réglage (ou la valeur par défaut s'il n'existe pas) */
   async reglage(cle, defaut) {
-    const r = await this.attendre(this.base.transaction('reglages').objectStore('reglages').get(cle));
+    const tx = await this._transaction('reglages');
+    const r = await this.attendre(tx.objectStore('reglages').get(cle));
     return r === undefined ? defaut : r.valeur;
   },
 
   /* Enregistre un réglage */
   async definirReglage(cle, valeur) {
-    const tx = this.base.transaction('reglages', 'readwrite');
+    const tx = await this._transaction('reglages', 'readwrite');
     if (valeur === undefined || valeur === null) tx.objectStore('reglages').delete(cle);
     else tx.objectStore('reglages').put({ cle, valeur });
     await this.finTransaction(tx);
@@ -261,7 +384,7 @@ const BD = {
 
   /* Lit d'un coup tous les magasins de données (pour les rappels, la sauvegarde…) */
   async toutLire() {
-    const tx = this.base.transaction(MAGASINS_DONNEES);
+    const tx = await this._transaction(MAGASINS_DONNEES);
     const resultat = {};
     await Promise.all(MAGASINS_DONNEES.map(async (nom) => {
       resultat[nom] = await this.attendre(tx.objectStore(nom).getAll());
@@ -272,7 +395,7 @@ const BD = {
   /* Efface TOUTES les données (fiches et réglages) */
   async toutEffacer() {
     const tous = [...MAGASINS_DONNEES, 'reglages'];
-    const tx = this.base.transaction(tous, 'readwrite');
+    const tx = await this._transaction(tous, 'readwrite');
     for (const nom of tous) tx.objectStore(nom).clear();
     await this.finTransaction(tx);
   }

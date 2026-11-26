@@ -7,6 +7,8 @@
 <html lang="fr" data-theme="omni">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Omni-Animalia</title>
 <meta name="description" content="Omni-Animalia — carnet de santé de tes animaux de compagnie : poids, vaccins, vermifuges, traitements, rendez-vous et rappels. Fonctionne hors ligne, sans compte.">
@@ -20,19 +22,7 @@
      affichage : sans cela, l'écran s'allumerait une fraction de seconde
      avec les réglages par défaut (un éclair désagréable). Ils sont
      recopiés dans le localStorage exprès pour être lus ici tout de suite. -->
-<script>
-(function () {
-  var t = 'omni', z = 'normal';
-  try {
-    var r = localStorage.getItem('omnianimaux_theme');
-    if (r === 'omni' || r === 'sombre' || r === 'clair') t = r;
-    var s = localStorage.getItem('omnianimaux_taille');
-    if (s === 'normal' || s === 'grand' || s === 'tresgrand') z = s;
-  } catch (e) { /* stockage refusé : réglages par défaut */ }
-  document.documentElement.dataset.theme = t;
-  document.documentElement.dataset.taille = z;
-})();
-</script>
+<script src="./init-theme.js"></script>
 
 <link rel="stylesheet" href="./styles.css">
 <link rel="stylesheet" href="./impression.css" media="print">
@@ -81,7 +71,7 @@
   <form id="verrou-form" class="verrou-boite" novalidate>
     <h1 tabindex="-1">Omni-Animalia est verrouillée</h1>
     <label for="verrou-mdp">Mot de passe</label>
-    <input type="password" id="verrou-mdp" autocomplete="current-password" aria-describedby="verrou-erreur">
+    <input type="password" id="verrou-mdp" maxlength="200" autocomplete="current-password" aria-describedby="verrou-erreur">
     <p id="verrou-erreur" class="message-erreur" hidden></p>
     <button type="submit" class="bouton principal large">Déverrouiller</button>
     <details class="petit">

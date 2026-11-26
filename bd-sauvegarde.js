@@ -18,6 +18,8 @@
 const Sauvegarde = {
   FORMAT: 'omni-animaux-sauvegarde',
   VERSION_FORMAT: 1,
+  MAX_TAILLE_FICHIER: 50 * 1024 * 1024,
+  MAX_FICHES: 50000,
 
   /* ---------- Exporter ---------- */
 
@@ -72,7 +74,9 @@ const Sauvegarde = {
      Renvoie { donnees, reglages, resume } ou lance une erreur lisible. */
   async lireFichier(fichier) {
     if (!fichier) throw BD.erreur('Aucun fichier choisi.');
-    if (fichier.size > 300 * 1024 * 1024) throw BD.erreur('Ce fichier est beaucoup trop gros pour être une sauvegarde d’Omni-Animalia.');
+    if (typeof fichier.size === 'number' && fichier.size > this.MAX_TAILLE_FICHIER) {
+      throw BD.erreur('Ce fichier est beaucoup trop gros pour être une sauvegarde d’Omni-Animalia.');
+    }
     let texte;
     try {
       texte = await fichier.text();
@@ -90,18 +94,33 @@ const Sauvegarde = {
 
   /* Vérifie le contenu, fiche par fiche */
   valider(objet) {
-    if (!objet || objet.format !== this.FORMAT) {
+    if (!objet || typeof objet !== 'object' || Array.isArray(objet) || objet.format !== this.FORMAT) {
       throw BD.erreur('Ce fichier n’est pas une sauvegarde d’Omni-Animalia.');
     }
-    if (typeof objet.versionFormat !== 'number' || objet.versionFormat > this.VERSION_FORMAT) {
+    if (!Number.isInteger(objet.versionFormat) || objet.versionFormat < 1) {
+      throw BD.erreur('Cette sauvegarde est vide ou abîmée (numéro de version incorrect).');
+    }
+    if (objet.versionFormat > this.VERSION_FORMAT) {
       throw BD.erreur('Cette sauvegarde vient d’une version plus récente d’Omni-Animalia. Mets l’application à jour, puis réessaie.');
     }
-    if (!objet.donnees || typeof objet.donnees !== 'object') throw BD.erreur('Cette sauvegarde est vide ou abîmée.');
+    if (!objet.donnees || typeof objet.donnees !== 'object' || Array.isArray(objet.donnees)) {
+      throw BD.erreur('Cette sauvegarde est vide ou abîmée.');
+    }
+    const protoDonnees = Object.getPrototypeOf(objet.donnees);
+    if (protoDonnees !== Object.prototype && protoDonnees !== null) {
+      throw BD.erreur('Cette sauvegarde est vide ou abîmée.');
+    }
 
     const donnees = {};
+    let totalFiches = 0;
     for (const magasin of MAGASINS_DONNEES) {
-      const liste = objet.donnees[magasin] === undefined ? [] : objet.donnees[magasin];
+      const brut = Object.prototype.hasOwnProperty.call(objet.donnees, magasin) ? objet.donnees[magasin] : undefined;
+      const liste = brut === undefined ? [] : brut;
       if (!Array.isArray(liste)) throw BD.erreur('Cette sauvegarde est abîmée (partie « ' + magasin + ' »).');
+      totalFiches += liste.length;
+      if (totalFiches > this.MAX_FICHES) {
+        throw BD.erreur('Cette sauvegarde est abîmée : elle contient trop de fiches.');
+      }
       const ids = new Set();
       donnees[magasin] = liste.map((fiche, i) => {
         try {
@@ -115,14 +134,46 @@ const Sauvegarde = {
       });
     }
 
+    if (objet.reglages !== undefined && objet.reglages !== null) {
+      if (typeof objet.reglages !== 'object' || Array.isArray(objet.reglages)) {
+        throw BD.erreur('Cette sauvegarde est abîmée (réglages illisibles).');
+      }
+      const protoReglages = Object.getPrototypeOf(objet.reglages);
+      if (protoReglages !== Object.prototype && protoReglages !== null) {
+        throw BD.erreur('Cette sauvegarde est abîmée (réglages illisibles).');
+      }
+    }
     const reglages = {};
     const r = objet.reglages || {};
-    if (['omni', 'sombre', 'clair'].includes(r.theme)) reglages.theme = r.theme;
-    if (['kg', 'g'].includes(r.unitePoids)) reglages.unitePoids = r.unitePoids;
-    if (['normal', 'grand', 'tresgrand'].includes(r.taille)) reglages.taille = r.taille;
-    const c = r.contactGarde;
-    if (c && typeof c === 'object' && typeof (c.nom || '') === 'string' && typeof (c.telephone || '') === 'string') {
-      reglages.contactGarde = { nom: (c.nom || '').slice(0, 120), telephone: (c.telephone || '').slice(0, 30) };
+    if (Object.prototype.hasOwnProperty.call(r, 'theme') && ['omni', 'sombre', 'clair'].includes(r.theme)) reglages.theme = r.theme;
+    if (Object.prototype.hasOwnProperty.call(r, 'unitePoids') && ['kg', 'g'].includes(r.unitePoids)) reglages.unitePoids = r.unitePoids;
+    if (Object.prototype.hasOwnProperty.call(r, 'taille') && ['normal', 'grand', 'tresgrand'].includes(r.taille)) reglages.taille = r.taille;
+    if (Object.prototype.hasOwnProperty.call(r, 'contactGarde') && r.contactGarde !== undefined && r.contactGarde !== null) {
+      const c = r.contactGarde;
+      if (typeof c !== 'object' || Array.isArray(c)) {
+        throw BD.erreur('Cette sauvegarde est abîmée (contact de garde illisible).');
+      }
+      const protoContact = Object.getPrototypeOf(c);
+      if (protoContact !== Object.prototype && protoContact !== null) {
+        throw BD.erreur('Cette sauvegarde est abîmée (contact de garde illisible).');
+      }
+      let nom = '';
+      if (Object.prototype.hasOwnProperty.call(c, 'nom') && c.nom !== undefined && c.nom !== null) {
+        if (typeof c.nom !== 'string') throw BD.erreur('Cette sauvegarde est abîmée (nom du contact de garde invalide).');
+        nom = c.nom.trim().slice(0, 120);
+      }
+      let telephone = '';
+      if (Object.prototype.hasOwnProperty.call(c, 'telephone') && c.telephone !== undefined && c.telephone !== null) {
+        if (typeof c.telephone !== 'string') throw BD.erreur('Cette sauvegarde est abîmée (téléphone du contact de garde invalide).');
+        const telTrim = c.telephone.trim();
+        if (telTrim && !/^[0-9+(). -]{3,30}$/.test(telTrim)) {
+          throw BD.erreur('Cette sauvegarde est abîmée (numéro de téléphone du contact de garde invalide).');
+        }
+        telephone = telTrim.slice(0, 30);
+      }
+      if (nom || telephone) {
+        reglages.contactGarde = { nom, telephone };
+      }
     }
 
     const resume = {
@@ -146,9 +197,13 @@ const Sauvegarde = {
     let ecartees = 0;
 
     const tous = [...MAGASINS_DONNEES, 'reglages'];
-    const tx = BD.base.transaction(tous, 'readwrite');
+    const tx = await BD._transaction(tous, 'readwrite');
+    const reg = tx.objectStore('reglages');
     if (mode === 'remplacer') {
       for (const nom of MAGASINS_DONNEES) tx.objectStore(nom).clear();
+      if (!reglages || !reglages.contactGarde) reg.delete('contactGarde');
+      if (!reglages || !reglages.unitePoids) reg.delete('unitePoids');
+      reg.delete('derniereSauvegarde');
     }
     let ajoutees = 0;
     for (const nom of MAGASINS_DONNEES) {
@@ -159,8 +214,7 @@ const Sauvegarde = {
         ajoutees++;
       }
     }
-    const reg = tx.objectStore('reglages');
-    for (const [cle, valeur] of Object.entries(reglages)) reg.put({ cle, valeur });
+    for (const [cle, valeur] of Object.entries(reglages || {})) reg.put({ cle, valeur });
     await BD.finTransaction(tx);
     return { ajoutees, ecartees };
   },
@@ -171,8 +225,8 @@ const Sauvegarde = {
      les retirer en un clic, sans toucher aux vraies données. */
 
   async exemplePresent() {
-    const animaux = await BD.tout('animaux');
-    return animaux.some((a) => a.exemple);
+    const [animaux, vetos] = await Promise.all([BD.tout('animaux'), BD.tout('veterinaires')]);
+    return animaux.some((a) => a.exemple) || vetos.some((v) => v.exemple);
   },
 
   async chargerExemple() {
@@ -235,13 +289,13 @@ const Sauvegarde = {
         { animalId: chien.id, date: j(-5), categorie: 'observation', texte: 'Mange bien, très joueur (exemple).' }
       ],
       taches: [
-        { animalId: chien.id, titre: 'Brosser le pelage (exemple)', echeance: j(-2), recN: 1, recUnite: 'semaines', recJour: 0, fait: false },
+        { animalId: chien.id, titre: 'Brosser le pelage (exemple)', echeance: j(-2), recN: 1, recUnite: 'semaines', fait: false },
         { animalId: chat.id, titre: 'Couper les griffes (exemple)', echeance: j(3), recN: 1, recUnite: 'mois', recJour: Dates.lire(j(3)).getDate(), fait: false },
         { animalId: chat.id, titre: 'Acheter un griffoir (exemple)', echeance: j(25), fait: false }
       ]
     };
     const tous = Object.keys(fiches);
-    const tx = BD.base.transaction(tous, 'readwrite');
+    const tx = await BD._transaction(tous, 'readwrite');
     for (const nom of tous) {
       for (const fiche of fiches[nom]) {
         if (!fiche.id) fiche.id = id();
@@ -252,23 +306,47 @@ const Sauvegarde = {
     await BD.finTransaction(tx);
   },
 
-  /* Retire tout ce qui vient de l'exemple (et uniquement cela) */
+  /* Retire tout ce qui vient de l'exemple (et toute fiche liée aux animaux d'exemple) */
   async supprimerExemple() {
-    const tx = BD.base.transaction(MAGASINS_DONNEES, 'readwrite');
-    for (const nom of MAGASINS_DONNEES) {
-      const magasin = tx.objectStore(nom);
-      magasin.openCursor().onsuccess = (e) => {
-        const curseur = e.target.result;
-        if (!curseur) return;
-        if (curseur.value.exemple) curseur.delete();
-        curseur.continue();
+    const tx = await BD._transaction(MAGASINS_DONNEES, 'readwrite');
+    const magAnimaux = tx.objectStore('animaux');
+    const magVetos = tx.objectStore('veterinaires');
+    const exempleAnimalIds = new Set();
+    const vetosRestants = new Set();
+
+    magVetos.getAll().onsuccess = (evVetos) => {
+      for (const v of evVetos.target.result) {
+        if (v.exemple) magVetos.delete(v.id);
+        else vetosRestants.add(v.id);
+      }
+
+      magAnimaux.getAll().onsuccess = (evAnimaux) => {
+        for (const a of evAnimaux.target.result) {
+          if (a.exemple) {
+            exempleAnimalIds.add(a.id);
+            magAnimaux.delete(a.id);
+          } else if (a.vetoId && !vetosRestants.has(a.vetoId)) {
+            const maj = { ...a };
+            delete maj.vetoId;
+            magAnimaux.put(maj);
+          }
+        }
+
+        for (const nom of MAGASINS_LIES) {
+          const magasin = tx.objectStore(nom);
+          magasin.openCursor().onsuccess = (e) => {
+            const curseur = e.target.result;
+            if (!curseur) return;
+            const r = curseur.value;
+            if (r.exemple || exempleAnimalIds.has(r.animalId)) {
+              curseur.delete();
+            }
+            curseur.continue();
+          };
+        }
       };
-    }
+    };
+
     await BD.finTransaction(tx);
-    // Un vrai animal qui avait choisi le vétérinaire d'exemple : on retire ce lien
-    const vetos = new Set((await BD.tout('veterinaires')).map((v) => v.id));
-    for (const a of await BD.tout('animaux')) {
-      if (a.vetoId && !vetos.has(a.vetoId)) { delete a.vetoId; await BD.enregistrer('animaux', a); }
-    }
   }
 };

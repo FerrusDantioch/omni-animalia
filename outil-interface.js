@@ -36,7 +36,9 @@ function el(balise, attributs, ...enfants) {
     if (val === false || val === null || val === undefined) continue;
     if (cle === 'text') e.textContent = val;
     else if (cle === 'class') e.className = val;
-    else if (cle.startsWith('on') && typeof val === 'function') e.addEventListener(cle.slice(2), val);
+    else if (/^on/i.test(cle)) {
+      if (typeof val === 'function' && cle.length > 2) e.addEventListener(cle.slice(2).toLowerCase(), val);
+    }
     else if (cle === 'value' || cle === 'checked' || cle === 'selected') e[cle] = val;
     else e.setAttribute(cle, val === true ? '' : String(val));
   }
@@ -128,6 +130,8 @@ function bouton(texte, action, options) {
 
 /* ---------- 4. Messages et fenêtres ---------- */
 const UI = {
+  _fermerDialogue: null,
+  _fermerVisionneuse: null,
 
   /* Affiche un message court en bas de l'écran (sans bruit, sans
      clignotement). Les lecteurs d'écran le lisent à voix haute.
@@ -163,6 +167,9 @@ const UI = {
   choisir(options) {
     return new Promise((resoudre) => {
       const dlg = $('#dialogue');
+      if (this._fermerDialogue) this._fermerDialogue();
+      if (!dlg) return resoudre(null);
+      if (dlg.open) dlg.close();
       vider(dlg);
       const titreId = 'dialogue-titre';
       dlg.setAttribute('aria-labelledby', titreId);
@@ -200,16 +207,23 @@ const UI = {
       }
       corps.append(boutons);
       dlg.append(corps);
-      const fermer = () => {
-        dlg.removeEventListener('close', fermer);
+      let resolu = false;
+      const terminer = () => {
+        if (resolu) return;
+        resolu = true;
+        dlg.removeEventListener('close', surClose);
+        if (this._fermerDialogue === terminer) this._fermerDialogue = null;
         resoudre(reponse);
       };
-      dlg.addEventListener('close', fermer);
+      const surClose = () => { if (!dlg.open) terminer(); };
+      this._fermerDialogue = terminer;
+      dlg.addEventListener('close', surClose);
       dlg.showModal();
       // Le focus va sur le bouton « Annuler » (le choix sans danger),
       // ou sur la case à remplir.
       const annuler = [...boutons.children].find((b, i) => options.choix[i].valeur === null);
-      (saisie || annuler || boutons.firstChild).focus();
+      const cibleFocus = saisie || annuler || boutons.firstChild;
+      if (cibleFocus) cibleFocus.focus();
     });
   },
 
@@ -254,6 +268,9 @@ const UI = {
   voirImage(src, titre) {
     return new Promise((resoudre) => {
       const dlg = $('#visionneuse');
+      if (this._fermerVisionneuse) this._fermerVisionneuse();
+      if (!dlg) return resoudre();
+      if (dlg.open) dlg.close();
       vider(dlg);
       const img = el('img', { class: 'image-visionneuse', alt: titre || 'Document' });
       img.src = src;
@@ -265,8 +282,18 @@ const UI = {
       const fermer = bouton('Fermer', () => dlg.close(), { classe: 'principal' });
       dlg.setAttribute('aria-label', titre || 'Document');
       dlg.append(zone, el('div', { class: 'dialogue-boutons' }, taille, fermer));
-      const fin = () => { dlg.removeEventListener('close', fin); vider(dlg); resoudre(); };
-      dlg.addEventListener('close', fin);
+      let resolu = false;
+      const terminer = () => {
+        if (resolu) return;
+        resolu = true;
+        dlg.removeEventListener('close', surClose);
+        if (this._fermerVisionneuse === terminer) this._fermerVisionneuse = null;
+        vider(dlg);
+        resoudre();
+      };
+      const surClose = () => { if (!dlg.open) terminer(); };
+      this._fermerVisionneuse = terminer;
+      dlg.addEventListener('close', surClose);
       dlg.showModal();
       fermer.focus();
     });
@@ -297,10 +324,108 @@ const UI = {
    champ mal rempli. */
 const Formulaire = {
   courant: null,      // le formulaire ouvert en ce moment
+  _enCours: false,
+  _generation: 0,
+  _compressions: new Set(),
+  _compressionsEnCours: 0,
+  _form: null,
+  _retourEnCours: false,
+  _dansPopstate: false,
+  _attenteOuverture: null,
+  _minuteurRetour: null,
+  _nettoyerRetour: null,
+
+  /* Réinitialise l'état du formulaire (annulation, navigation arrière/avant, succès) */
+  reinitialiser() {
+    this.courant = null;
+    this._enCours = false;
+    this._generation = (this._generation || 0) + 1;
+    this._compressions.clear();
+    this._compressionsEnCours = 0;
+    this._form = null;
+    if (!this._dansPopstate) {
+      this._attenteOuverture = null;
+    }
+    const zone = $('#formulaire-zone');
+    if (zone) vider(zone);
+  },
+
+  _attendreRetour() {
+    if (this._nettoyerRetour) this._nettoyerRetour();
+    this._retourEnCours = true;
+    let termine = false;
+    const cleanup = () => {
+      window.removeEventListener('popstate', surPopstate);
+      clearTimeout(this._minuteurRetour);
+      this._minuteurRetour = null;
+      this._nettoyerRetour = null;
+      this._dansPopstate = false;
+    };
+    const finir = () => {
+      if (termine) return;
+      termine = true;
+      cleanup();
+      this._retourEnCours = false;
+      const enAttente = this._attenteOuverture;
+      this._attenteOuverture = null;
+      const verrou = $('#verrou');
+      if (verrou && !verrou.hidden) {
+        if (enAttente) this.reinitialiser();
+        return;
+      }
+      if (enAttente) this.ouvrir(enAttente);
+    };
+    const surPopstate = () => { finir(); };
+    this._nettoyerRetour = () => {
+      termine = true;
+      cleanup();
+      this._retourEnCours = false;
+    };
+    window.addEventListener('popstate', surPopstate);
+    this._minuteurRetour = setTimeout(finir, 250);
+  },
+
+  _fermerAvecRetour() {
+    if (typeof Nav === 'undefined') return;
+    const etaitFormulaire = !!(Nav.etat && Nav.etat.vue === 'formulaire');
+    Nav.retour();
+    if (etaitFormulaire && Nav.etat && Nav.etat.vue === 'formulaire') {
+      this._attendreRetour();
+    }
+  },
+
+  majBoutonEnvoi(form) {
+    const cible = form || this._form;
+    if (!cible) return;
+    const btn = $('button[type="submit"]', cible);
+    if (btn) btn.disabled = !!(this._enCours || this._compressions.size > 0);
+  },
+
+  suivreCompression(promesse) {
+    const gen = this._generation;
+    let p;
+    p = Promise.resolve(promesse).catch(() => {}).finally(() => {
+      if (gen === this._generation) {
+        this._compressions.delete(p);
+        this._compressionsEnCours = this._compressions.size;
+        this.majBoutonEnvoi();
+      }
+    });
+    this._compressions.add(p);
+    this._compressionsEnCours = this._compressions.size;
+    this.majBoutonEnvoi();
+    return p;
+  },
 
   /* Ouvre un formulaire.
      def : { titre, intro, champs, valeurs, valider(v), enregistrer(v), texteBouton } */
   ouvrir(def) {
+    if (this._retourEnCours) {
+      this._attenteOuverture = def;
+      this.courant = def;
+      return;
+    }
+    this.reinitialiser();
     this.courant = def;
     Nav.aller({ vue: 'formulaire' });
   },
@@ -324,15 +449,22 @@ const Formulaire = {
     for (const champ of def.champs) form.append(this.fabriquerChamp(champ, valeurs[champ.nom]));
 
     form.append(el('div', { class: 'formulaire-boutons' },
-      bouton('Annuler', () => Nav.retour(), { classe: 'secondaire' }),
+      bouton('Annuler', () => { this.reinitialiser(); this._fermerAvecRetour(); }, { classe: 'secondaire' }),
       bouton(def.texteBouton || 'Enregistrer', null, { type: 'submit', classe: 'principal', icone: 'coche' })
     ));
 
-    form.addEventListener('input', () => this.majVisibilite(form));
-    form.addEventListener('change', () => this.majVisibilite(form));
+    const effacerInvalide = (e) => {
+      const bloc = e.target && e.target.closest ? e.target.closest('[data-champ]') : null;
+      if (!bloc) return;
+      $$('[aria-invalid]', bloc).forEach((elmt) => elmt.removeAttribute('aria-invalid'));
+    };
+    form.addEventListener('input', (e) => { effacerInvalide(e); this.majVisibilite(form); });
+    form.addEventListener('change', (e) => { effacerInvalide(e); this.majVisibilite(form); });
     form.addEventListener('submit', (e) => { e.preventDefault(); this.soumettre(form); });
+    this._form = form;
     zone.append(form);
     this.majVisibilite(form);
+    this.majBoutonEnvoi(form);
     return true;
   },
 
@@ -432,25 +564,32 @@ const Formulaire = {
     if (valeur) apercu.src = valeur;
     const etat = el('p', { class: 'aide', 'aria-live': 'polite', text: valeur ? '' : 'Aucune photo pour le moment.' });
 
-    const traiter = async (fichier) => {
+    let reqId = 0;
+    const traiter = (fichier) => {
       if (!fichier) return;
+      const monId = ++reqId;
       etat.textContent = 'Préparation de la photo…';
-      try {
-        const donnees = await Photo.reduire(fichier);
-        cache.value = donnees;
-        apercu.src = donnees;
-        apercu.hidden = false;
-        retirer.hidden = false;
-        etat.textContent = 'Photo prête. Elle sera enregistrée avec le reste.';
-      } catch (e) {
-        etat.textContent = e.message || 'Cette image n’a pas pu être lue.';
-      }
+      return this.suivreCompression((async () => {
+        try {
+          const donnees = await Photo.reduire(fichier);
+          if (monId !== reqId) return;
+          cache.value = donnees;
+          apercu.src = donnees;
+          apercu.hidden = false;
+          retirer.hidden = false;
+          etat.textContent = 'Photo prête. Elle sera enregistrée avec le reste.';
+        } catch (e) {
+          if (monId !== reqId) return;
+          etat.textContent = e.message || 'Cette image n’a pas pu être lue.';
+        }
+      })());
     };
     const fichierCamera = el('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'invisible', tabindex: '-1', 'aria-hidden': 'true' });
     const fichierGalerie = el('input', { type: 'file', accept: 'image/*', class: 'invisible', tabindex: '-1', 'aria-hidden': 'true' });
     fichierCamera.addEventListener('change', () => { traiter(fichierCamera.files[0]); fichierCamera.value = ''; });
     fichierGalerie.addEventListener('change', () => { traiter(fichierGalerie.files[0]); fichierGalerie.value = ''; });
     const retirer = bouton('Retirer la photo', () => {
+      reqId++;
       cache.value = '';
       apercu.hidden = true;
       apercu.removeAttribute('src');
@@ -484,6 +623,7 @@ const Formulaire = {
     const ajouterCamera = bouton('Photographier un document', () => fichierCamera.click(), { classe: 'secondaire', icone: 'photo' });
     const ajouterGalerie = bouton('Choisir dans la galerie', () => fichierGalerie.click(), { classe: 'secondaire' });
 
+    let enCoursDocs = 0;
     const dessiner = () => {
       cache.value = JSON.stringify(liste);
       vider(vignettes);
@@ -498,22 +638,44 @@ const Formulaire = {
       const plein = liste.length >= MAX_PIECES;
       ajouterCamera.disabled = plein;
       ajouterGalerie.disabled = plein;
-      if (!liste.length) etat.textContent = 'Aucun document joint.';
-      else if (plein) etat.textContent = MAX_PIECES + ' documents au maximum pour une note.';
+      if (!enCoursDocs) {
+        if (!liste.length) etat.textContent = 'Aucun document joint.';
+        else if (plein) etat.textContent = MAX_PIECES + ' documents au maximum pour une note.';
+      }
     };
 
-    const traiter = async (fichiers) => {
-      const choisis = [...fichiers].slice(0, MAX_PIECES - liste.length);
+    const traiter = (fichiers) => {
+      const dispo = MAX_PIECES - liste.length;
+      const choisis = [...(fichiers || [])].slice(0, Math.max(0, dispo));
       if (!choisis.length) return;
+      enCoursDocs++;
       etat.textContent = 'Préparation du document…';
-      try {
-        for (const f of choisis) liste.push(await Photo.reduire(f, Photo.DOCUMENT));
-        dessiner();
-        etat.textContent = choisis.length > 1 ? choisis.length + ' documents ajoutés.' : 'Document ajouté.';
-      } catch (e) {
-        dessiner();
-        etat.textContent = e.message || 'Cette image n’a pas pu être lue.';
-      }
+      return this.suivreCompression((async () => {
+        let ajoutes = 0;
+        let derniereErreur = null;
+        try {
+          for (const f of choisis) {
+            if (liste.length >= MAX_PIECES) break;
+            try {
+              const donnees = await Photo.reduire(f, Photo.DOCUMENT);
+              if (liste.length < MAX_PIECES) {
+                liste.push(donnees);
+                ajoutes++;
+              }
+            } catch (e) {
+              derniereErreur = e;
+            }
+          }
+        } finally {
+          enCoursDocs--;
+          dessiner();
+        }
+        if (derniereErreur) {
+          etat.textContent = (ajoutes ? ajoutes + ' document(s) ajouté(s). ' : '') + (derniereErreur.message || 'Cette image n’a pas pu être lue.');
+        } else if (ajoutes) {
+          etat.textContent = ajoutes > 1 ? ajoutes + ' documents ajoutés.' : 'Document ajouté.';
+        }
+      })());
     };
     fichierCamera.addEventListener('change', () => { traiter(fichierCamera.files); fichierCamera.value = ''; });
     fichierGalerie.addEventListener('change', () => { traiter(fichierGalerie.files); fichierGalerie.value = ''; });
@@ -559,7 +721,17 @@ const Formulaire = {
     for (const champ of this.courant.champs) {
       if (!champ.visibleSi) continue;
       const bloc = $('[data-champ="' + champ.nom + '"]', form);
-      if (bloc) bloc.hidden = !champ.visibleSi(v);
+      if (bloc) {
+        bloc.hidden = !champ.visibleSi(v);
+        if (bloc.hidden) {
+          $$('[aria-invalid]', bloc).forEach((elmt) => elmt.removeAttribute('aria-invalid'));
+          const msg = $('.message-erreur', bloc);
+          if (msg) {
+            msg.textContent = '';
+            msg.hidden = true;
+          }
+        }
+      }
     }
   },
 
@@ -567,7 +739,8 @@ const Formulaire = {
   lireNombre(texte) {
     const t = String(texte).replace(/\s/g, '').replace(',', '.');
     if (!/^-?\d+(\.\d+)?$/.test(t)) return NaN;
-    return Number(t);
+    const n = Number(t);
+    return Number.isFinite(n) ? n : NaN;
   },
 
   /* Vérifie chaque champ. Renvoie { valeurs (converties), erreurs } */
@@ -604,7 +777,7 @@ const Formulaire = {
         else if (champ.max !== undefined && n > champ.max) erreurs[champ.nom] = 'Le nombre est trop grand (maximum : ' + UI.nombre(champ.max) + ').';
         else valeurs[champ.nom] = n;
       } else if (champ.type === 'tel') {
-        if (!/^[0-9+().\s-]{3,30}$/.test(t)) erreurs[champ.nom] = 'Ce numéro contient des caractères inattendus (seuls les chiffres, espaces, +, -, points et parenthèses sont acceptés).';
+        if (!/^[0-9+(). -]{3,30}$/.test(t)) erreurs[champ.nom] = 'Ce numéro contient des caractères inattendus (seuls les chiffres, espaces simples, +, -, points et parenthèses sont acceptés).';
       }
     }
 
@@ -634,8 +807,14 @@ const Formulaire = {
         const p = $('.message-erreur', bloc);
         p.textContent = erreurs[nom];
         p.hidden = false;
-        const saisie = $('input:not([type=hidden]), select, textarea', bloc);
-        if (saisie) saisie.setAttribute('aria-invalid', 'true');
+        if ((champ && champ.type === 'radios') || $('fieldset.groupe-radios', bloc)) {
+          const groupe = $('fieldset', bloc);
+          if (groupe) groupe.setAttribute('aria-invalid', 'true');
+          $$('input[type="radio"]', bloc).forEach((r) => r.setAttribute('aria-invalid', 'true'));
+        } else {
+          const saisie = $('input:not([type=hidden]), select, textarea', bloc);
+          if (saisie) saisie.setAttribute('aria-invalid', 'true');
+        }
       }
       liste.append(el('li', { text: (champ ? champ.label : nom) + ' : ' + erreurs[nom] }));
     }
@@ -646,21 +825,38 @@ const Formulaire = {
 
   /* Clic sur « Enregistrer » */
   async soumettre(form) {
-    if (this._enCours) return;           // évite un double enregistrement
-    const { valeurs, erreurs } = this.verifier(form);
-    this.montrerErreurs(form, erreurs);
-    if (Object.keys(erreurs).length) return;
+    if (this._enCours || !this.courant) return;           // évite un double enregistrement
+    const gen = this._generation;
     this._enCours = true;
+    this.majBoutonEnvoi(form);
     try {
+      while (this._compressions.size > 0) {
+        await Promise.allSettled([...this._compressions]);
+        if (gen !== this._generation || !this.courant) return;
+      }
+      const { valeurs, erreurs } = this.verifier(form);
+      this.montrerErreurs(form, erreurs);
+      if (Object.keys(erreurs).length) return;
       const message = await this.courant.enregistrer(valeurs);
-      this.courant = null;
-      Nav.retour();
+      if (gen !== this._generation) return;
+      this.reinitialiser();
+      this._fermerAvecRetour();
       UI.annoncer(message || 'Enregistré.');
     } catch (e) {
+      if (gen !== this._generation) return;
       console.warn(e);
       UI.annoncer(UI.messageErreur(e), 'erreur');
     } finally {
-      this._enCours = false;
+      if (gen === this._generation) {
+        this._enCours = false;
+        this.majBoutonEnvoi(form);
+      }
     }
   }
 };
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', () => {
+    if (Formulaire._retourEnCours) Formulaire._dansPopstate = true;
+  });
+}

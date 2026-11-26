@@ -26,6 +26,23 @@ const EcranSante = {
   NOMS_AP: { vermifuge: 'Vermifuge', 'anti-puces': 'Anti-puces', 'anti-tiques': 'Anti-tiques', autre: 'Autre antiparasitaire' },
   NOMS_NOTES: { symptome: 'Symptôme', observation: 'Observation', examen: 'Résultat d’examen', allergie: 'Allergie', antecedent: 'Antécédent', autre: 'Autre' },
   filtreNotes: { du: '', au: '', categorie: '' },
+  _animalNotesId: null,
+  _verrousTraitements: new Map(),
+
+  async _avecVerrouTraitement(id, fn) {
+    const prec = this._verrousTraitements.get(id) || Promise.resolve();
+    let courant;
+    courant = prec.catch(() => {}).then(fn).finally(() => {
+      if (this._verrousTraitements.get(id) === courant) this._verrousTraitements.delete(id);
+    });
+    this._verrousTraitements.set(id, courant);
+    return courant;
+  },
+
+  reinitialiserFiltre() {
+    this.filtreNotes = { du: '', au: '', categorie: '' };
+    this._animalNotesId = null;
+  },
 
   /* Les propositions de vaccins pour une espèce (saisie libre) */
   suggestionsVaccins(espece) {
@@ -41,12 +58,22 @@ const EcranSante = {
 
   /* Les noms des vétérinaires enregistrés (pour la saisie semi-automatique) */
   async nomsVetos() {
-    return (await BD.tout('veterinaires')).map((v) => v.nom).sort((a, b) => a.localeCompare(b, 'fr'));
+    return (await BD.tout('veterinaires'))
+      .map((v) => (v && typeof v.nom === 'string' ? v.nom : ''))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'fr'));
   },
 
   /* Trie du plus récent au plus ancien */
   recentsDabord(liste, champ) {
-    return liste.sort((a, b) => ((a[champ] || '') < (b[champ] || '') ? 1 : (a[champ] || '') > (b[champ] || '') ? -1 : 0));
+    return liste.sort((a, b) => {
+      const va = (a && a[champ]) || '';
+      const vb = (b && b[champ]) || '';
+      if (va !== vb) return va < vb ? 1 : -1;
+      const ia = String((a && a.id) ?? '');
+      const ib = String((b && b.id) ?? '');
+      return ia < ib ? 1 : ia > ib ? -1 : 0;
+    });
   },
 
   /* « dans 5 jours », « en retard de 2 jours »… avec la classe de couleur */
@@ -124,47 +151,52 @@ const EcranSante = {
     // Seul le DERNIER vaccin de chaque nom porte le rappel « actif »
     const vus = new Set();
     for (const v of liste) {
-      const cle = v.nom.trim().toLowerCase();
+      const nom = (v && typeof v.nom === 'string') ? v.nom : '';
+      const cle = nom.trim().toLowerCase();
       const actif = !vus.has(cle);
       vus.add(cle);
       const rappel = v.rappel
         ? EcranAnimal.ligne('Prochain rappel', Dates.fr(v.rappel), actif ? this.echeance(v.rappel) : el('span', { class: 'discret', text: ' (déjà renouvelé)' }))
         : null;
       zone.append(EcranAnimal.carteFiche({
-        titre: v.nom,
+        titre: nom,
         lignes: [
           EcranAnimal.ligne('Date', Dates.fr(v.date)), rappel,
           EcranAnimal.ligne('Vétérinaire', v.veterinaire), EcranAnimal.ligne('Numéro de lot', v.lot),
           EcranAnimal.ligne('Note', v.note)],
         autres: actif && v.rappel && !a.archive
-          ? bouton('Noter le rappel fait', () => this.formulaireVaccin(a, null, { nom: v.nom, veterinaire: v.veterinaire, date: Dates.aujourdhui() }), { classe: 'secondaire', icone: 'coche' })
+          ? bouton('Noter le rappel fait', () => this.formulaireVaccin(a, null, { nom, veterinaire: v.veterinaire, date: Dates.aujourdhui() }), { classe: 'secondaire', icone: 'coche' })
           : null,
         modifier: a.archive ? null : () => this.formulaireVaccin(a, v),
-        supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('vaccins', v, v.nom + ' du ' + Dates.fr(v.date))
+        supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('vaccins', v, (nom || 'Vaccin') + ' du ' + Dates.fr(v.date))
       }));
     }
   },
 
   async formulaireVaccin(a, vaccin, depart) {
-    const vetos = await this.nomsVetos();
-    Formulaire.ouvrir({
-      titre: (vaccin ? 'Modifier un vaccin' : 'Nouveau vaccin') + ' — ' + a.nom,
-      valeurs: vaccin || depart || { date: Dates.aujourdhui() },
-      champs: [
-        { nom: 'nom', label: 'Nom du vaccin', type: 'texte', requis: true, long: 120, suggestions: this.suggestionsVaccins(a.espece),
-          aide: 'Des noms courants sont proposés pendant la saisie. Rien n’est rempli à ta place : reporte ce qui est écrit sur le carnet ou l’ordonnance.' },
-        { nom: 'date', label: 'Date de la vaccination', type: 'date', requis: true, pasDansFutur: true },
-        { nom: 'rappel', label: 'Date du prochain rappel', type: 'date', aide: 'Celle indiquée par le vétérinaire. Laisse vide si aucun rappel n’est prévu.' },
-        { nom: 'veterinaire', label: 'Vétérinaire', type: 'texte', long: 120, suggestions: vetos },
-        { nom: 'lot', label: 'Numéro de lot (facultatif)', type: 'texte', long: 60 },
-        { nom: 'note', label: 'Note', type: 'zone' }
-      ],
-      valider: (v) => (v.rappel && v.date && v.rappel <= v.date ? { rappel: 'Le rappel doit être après la date de vaccination.' } : {}),
-      enregistrer: async (v) => {
-        await BD.enregistrer('vaccins', { ...(vaccin || {}), ...v, animalId: a.id });
-        return 'Vaccin enregistré.';
-      }
-    });
+    try {
+      const vetos = await this.nomsVetos();
+      Formulaire.ouvrir({
+        titre: (vaccin ? 'Modifier un vaccin' : 'Nouveau vaccin') + ' — ' + (a.nom || ''),
+        valeurs: vaccin || depart || { date: Dates.aujourdhui() },
+        champs: [
+          { nom: 'nom', label: 'Nom du vaccin', type: 'texte', requis: true, long: 120, suggestions: this.suggestionsVaccins(a.espece),
+            aide: 'Des noms courants sont proposés pendant la saisie. Rien n’est rempli à ta place : reporte ce qui est écrit sur le carnet ou l’ordonnance.' },
+          { nom: 'date', label: 'Date de la vaccination', type: 'date', requis: true, pasDansFutur: true },
+          { nom: 'rappel', label: 'Date du prochain rappel', type: 'date', aide: 'Celle indiquée par le vétérinaire. Laisse vide si aucun rappel n’est prévu.' },
+          { nom: 'veterinaire', label: 'Vétérinaire', type: 'texte', long: 120, suggestions: vetos },
+          { nom: 'lot', label: 'Numéro de lot (facultatif)', type: 'texte', long: 60 },
+          { nom: 'note', label: 'Note', type: 'zone' }
+        ],
+        valider: (v) => (v.rappel && v.date && v.rappel <= v.date ? { rappel: 'Le rappel doit être après la date de vaccination.' } : {}),
+        enregistrer: async (v) => {
+          await BD.enregistrer('vaccins', { ...(vaccin || {}), ...v, animalId: a.id });
+          return 'Vaccin enregistré.';
+        }
+      });
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
   },
 
   /* ---------- Vermifuges et antiparasitaires ---------- */
@@ -174,20 +206,21 @@ const EcranSante = {
     if (!liste.length) return EcranAnimal.message(zone, 'Aucune prise enregistrée.');
     const vus = new Set();
     for (const x of liste) {
-      const cle = x.type === 'autre' ? 'autre:' + (x.produit || '').trim().toLowerCase() : x.type;
+      const nomType = Object.prototype.hasOwnProperty.call(this.NOMS_AP, x.type) ? this.NOMS_AP[x.type] : 'Antiparasitaire';
+      const cle = x.type === 'autre' ? 'autre:' + (x.produit || '').trim().toLowerCase() : (x.type || '');
       const actif = !vus.has(cle);
       vus.add(cle);
       const prochaine = x.prochaine
         ? EcranAnimal.ligne('Prochaine prise', Dates.fr(x.prochaine), actif ? this.echeance(x.prochaine) : el('span', { class: 'discret', text: ' (déjà faite)' }))
         : null;
       zone.append(EcranAnimal.carteFiche({
-        titre: this.NOMS_AP[x.type] + (x.produit ? ' — ' + x.produit : ''),
+        titre: nomType + (x.produit ? ' — ' + x.produit : ''),
         lignes: [EcranAnimal.ligne('Date', Dates.fr(x.date)), prochaine, EcranAnimal.ligne('Dose', x.dose), EcranAnimal.ligne('Note', x.note)],
         autres: actif && x.prochaine && !a.archive
           ? bouton('Noter la prise suivante', () => this.formulaireAP(a, null, { type: x.type, produit: x.produit, dose: x.dose, date: Dates.aujourdhui() }), { classe: 'secondaire', icone: 'coche' })
           : null,
         modifier: a.archive ? null : () => this.formulaireAP(a, x),
-        supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('antiparasitaires', x, this.NOMS_AP[x.type] + ' du ' + Dates.fr(x.date))
+        supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('antiparasitaires', x, nomType + ' du ' + Dates.fr(x.date))
       }));
     }
   },
@@ -220,19 +253,19 @@ const EcranSante = {
     const enCours = liste.filter((t) => t.statut !== 'termine');
     const finis = liste.filter((t) => t.statut === 'termine');
     const carte = (t) => EcranAnimal.carteFiche({
-      titre: t.nom,
+      titre: t.nom || '',
       classe: t.statut === 'termine' ? 'termine' : '',
       lignes: [
         EcranAnimal.ligne('Statut', t.statut === 'termine' ? 'Terminé' : 'En cours'),
         EcranAnimal.ligne('Dose', t.dose), EcranAnimal.ligne('Fréquence', t.frequence),
-        EcranAnimal.ligne('Début', t.debut ? Dates.fr(t.debut) : ''),
-        EcranAnimal.ligne('Fin', t.fin ? Dates.fr(t.fin) : '', t.fin && t.statut !== 'termine' ? this.echeance(t.fin) : null),
+        EcranAnimal.ligne('Début', t.debut && Dates.estValide(t.debut) ? Dates.fr(t.debut) : ''),
+        EcranAnimal.ligne('Fin', t.fin && Dates.estValide(t.fin) ? Dates.fr(t.fin) : '', t.fin && Dates.estValide(t.fin) && t.statut !== 'termine' ? this.echeance(t.fin) : null),
         t.prisesParJour ? EcranAnimal.ligne('Prises par jour', String(t.prisesParJour)) : null,
         EcranAnimal.ligne('Note', t.note),
         t.statut !== 'termine' && t.prisesParJour ? this.blocPrises(t, a.archive ? null : () => EcranAnimal.rafraichir()) : null],
       autres: t.statut !== 'termine' && !a.archive ? bouton('Marquer terminé', () => this.terminer(t), { classe: 'secondaire', icone: 'coche' }) : null,
       modifier: a.archive ? null : () => this.formulaireTraitement(a, t),
-      supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('traitements', t, t.nom)
+      supprimer: a.archive ? null : () => EcranAnimal.supprimerFiche('traitements', t, t.nom || 'Traitement')
     });
     zone.append(el('h3', { class: 'sous-titre', text: 'En cours (' + enCours.length + ')' }));
     if (!enCours.length) zone.append(el('p', { class: 'discret', text: 'Aucun traitement en cours.' }));
@@ -246,13 +279,17 @@ const EcranSante = {
   /* ---------- Les prises du jour (traitements avec « prises par jour ») ---------- */
 
   prisesDuJour(t, jour) {
-    return ((t.prises && t.prises[jour]) || []).slice().sort();
+    const liste = t && t.prises && Array.isArray(t.prises[jour]) ? t.prises[jour] : [];
+    return liste.slice().sort();
   },
 
   /* « 08:05 » → « 8 h 05 » */
   heureLisible(h) {
+    if (typeof h !== 'string' || !h.includes(':')) return String(h || '');
     const [hh, mm] = h.split(':');
-    return Number(hh) + ' h ' + mm;
+    const nh = Number(hh);
+    if (!Number.isFinite(nh)) return h;
+    return nh + ' h ' + (mm || '00');
   },
 
   /* Le petit encadré « Aujourd'hui : 1 prise sur 2 (8 h 05) » + boutons.
@@ -281,69 +318,150 @@ const EcranSante = {
   /* Note une prise à l'heure actuelle. Si toutes les prises du jour sont
      déjà notées, on demande confirmation : évite de donner deux fois. */
   async noterPrise(t, apres) {
-    try {
-      const frais = (await BD.lire('traitements', t.id)) || t;      // la version la plus récente
-      const jour = Dates.aujourdhui();
-      const deja = this.prisesDuJour(frais, jour);
-      if (frais.prisesParJour && deja.length >= frais.prisesParJour) {
-        const ok = await UI.confirmer({
-          titre: 'Toutes les prises du jour sont déjà notées',
-          message: [
-            frais.nom + ' : ' + deja.length + ' prise(s) déjà notée(s) aujourd’hui (' + deja.map((h) => this.heureLisible(h)).join(', ') + '), pour ' + frais.prisesParJour + ' prévue(s).',
-            'Vérifie bien avant de redonner une dose. En cas de doute, demande au vétérinaire.'
-          ],
-          oui: 'Noter une prise de plus', non: 'Ne rien noter'
-        });
-        if (!ok) return;
+    if (!t || !t.id) return;
+    return this._avecVerrouTraitement(t.id, async () => {
+      try {
+        let frais = await BD.lire('traitements', t.id);      // la version la plus récente
+        if (!frais) {
+          UI.annoncer('Ce traitement n’existe plus.', 'erreur');
+          if (apres) await apres();
+          return;
+        }
+        if (frais.statut === 'termine') {
+          UI.annoncer('Ce traitement est déjà terminé.', 'erreur');
+          if (apres) await apres();
+          return;
+        }
+        const jour = Dates.aujourdhui();
+        const deja = this.prisesDuJour(frais, jour);
+        if (deja.length >= 48) {
+          UI.annoncer('Maximum de 48 prises par jour atteint pour ce traitement.', 'erreur');
+          return;
+        }
+        if (frais.prisesParJour && deja.length >= frais.prisesParJour) {
+          const ok = await UI.confirmer({
+            titre: 'Toutes les prises du jour sont déjà notées',
+            message: [
+              (frais.nom || 'Traitement') + ' : ' + deja.length + ' prise(s) déjà notée(s) aujourd’hui (' + deja.map((h) => this.heureLisible(h)).join(', ') + '), pour ' + frais.prisesParJour + ' prévue(s).',
+              'Vérifie bien avant de redonner une dose. En cas de doute, demande au vétérinaire.'
+            ],
+            oui: 'Noter une prise de plus', non: 'Ne rien noter'
+          });
+          if (!ok) return;
+          frais = await BD.lire('traitements', t.id);
+          if (!frais) {
+            UI.annoncer('Ce traitement n’existe plus.', 'erreur');
+            if (apres) await apres();
+            return;
+          }
+          if (frais.statut === 'termine') {
+            UI.annoncer('Ce traitement est déjà terminé.', 'erreur');
+            if (apres) await apres();
+            return;
+          }
+          if (this.prisesDuJour(frais, jour).length >= 48) {
+            UI.annoncer('Maximum de 48 prises par jour atteint pour ce traitement.', 'erreur');
+            return;
+          }
+        }
+        const d = new Date();
+        const heure = Dates.deuxChiffres(d.getHours()) + ':' + Dates.deuxChiffres(d.getMinutes());
+        const prises = {};
+        if (frais.prises && typeof frais.prises === 'object' && !Array.isArray(frais.prises)) {
+          for (const j of Object.keys(frais.prises)) {
+            if (!Dates.estValide(j) || j > jour) continue;
+            const ec = Dates.ecartJours(j, jour);
+            if (!Number.isFinite(ec) || ec > 120) continue;
+            const arr = frais.prises[j];
+            if (Array.isArray(arr) && arr.length) prises[j] = arr.slice();
+          }
+        }
+        prises[jour] = [...(prises[jour] || []), heure].sort();
+        const maxJours = typeof MAX_PRISES_JOURS === 'number' ? MAX_PRISES_JOURS : 400;
+        const cles = Object.keys(prises).sort();
+        while (cles.length > maxJours) {
+          const plusVieille = cles.shift();
+          if (plusVieille !== jour) delete prises[plusVieille];
+        }
+        await BD.enregistrer('traitements', { ...frais, prises });
+        UI.annoncer('Prise notée à ' + this.heureLisible(heure) + ' (' + prises[jour].length + ' sur ' + (frais.prisesParJour || '?') + ' aujourd’hui).');
+        if (apres) await apres();
+      } catch (e) {
+        UI.annoncer(UI.messageErreur(e), 'erreur');
       }
-      const d = new Date();
-      const heure = Dates.deuxChiffres(d.getHours()) + ':' + Dates.deuxChiffres(d.getMinutes());
-      const prises = { ...(frais.prises || {}) };
-      prises[jour] = [...(prises[jour] || []), heure].sort();
-      // On garde 120 jours d'historique, pas plus
-      for (const j of Object.keys(prises)) if (Dates.ecartJours(j, jour) > 120) delete prises[j];
-      await BD.enregistrer('traitements', { ...frais, prises });
-      UI.annoncer('Prise notée à ' + this.heureLisible(heure) + ' (' + prises[jour].length + ' sur ' + (frais.prisesParJour || '?') + ' aujourd’hui).');
-      if (apres) await apres();
-    } catch (e) {
-      UI.annoncer(UI.messageErreur(e), 'erreur');
-    }
+    });
   },
 
   async annulerPrise(t, apres) {
-    try {
-      const frais = (await BD.lire('traitements', t.id)) || t;
-      const jour = Dates.aujourdhui();
-      const auj = this.prisesDuJour(frais, jour);
-      if (!auj.length) return;
-      const derniere = auj[auj.length - 1];
-      const ok = await UI.confirmer({
-        titre: 'Annuler cette prise ?',
-        message: 'La prise notée à ' + this.heureLisible(derniere) + ' aujourd’hui sera retirée.',
-        oui: 'Retirer la prise', danger: true
-      });
-      if (!ok) return;
-      const prises = { ...(frais.prises || {}) };
-      prises[jour] = auj.slice(0, -1);
-      await BD.enregistrer('traitements', { ...frais, prises });
-      UI.annoncer('Prise retirée.');
-      if (apres) await apres();
-    } catch (e) {
-      UI.annoncer(UI.messageErreur(e), 'erreur');
-    }
+    if (!t || !t.id) return;
+    return this._avecVerrouTraitement(t.id, async () => {
+      try {
+        let frais = await BD.lire('traitements', t.id);
+        if (!frais) {
+          UI.annoncer('Ce traitement n’existe plus.', 'erreur');
+          if (apres) await apres();
+          return;
+        }
+        const jour = Dates.aujourdhui();
+        const auj = this.prisesDuJour(frais, jour);
+        if (!auj.length) return;
+        const derniere = auj[auj.length - 1];
+        const ok = await UI.confirmer({
+          titre: 'Annuler cette prise ?',
+          message: 'La prise notée à ' + this.heureLisible(derniere) + ' aujourd’hui sera retirée.',
+          oui: 'Retirer la prise', danger: true
+        });
+        if (!ok) return;
+        frais = await BD.lire('traitements', t.id);
+        if (!frais) {
+          UI.annoncer('Ce traitement n’existe plus.', 'erreur');
+          if (apres) await apres();
+          return;
+        }
+        const auj2 = this.prisesDuJour(frais, jour);
+        if (!auj2.length) return;
+        const prises = { ...(frais.prises || {}) };
+        const restantes = auj2.slice(0, -1);
+        if (restantes.length) prises[jour] = restantes;
+        else delete prises[jour];
+        const maj = { ...frais };
+        if (Object.keys(prises).length) maj.prises = prises;
+        else delete maj.prises;
+        await BD.enregistrer('traitements', maj);
+        UI.annoncer('Prise retirée.');
+        if (apres) await apres();
+      } catch (e) {
+        UI.annoncer(UI.messageErreur(e), 'erreur');
+      }
+    });
   },
 
   async terminer(t) {
-    try {
-      const fiche = { ...t, statut: 'termine' };
-      if (!fiche.fin || fiche.fin > Dates.aujourdhui()) fiche.fin = Dates.aujourdhui();
-      if (fiche.debut && fiche.fin < fiche.debut) fiche.fin = fiche.debut;
-      await BD.enregistrer('traitements', fiche);
-      UI.annoncer('Traitement marqué terminé.');
-      await EcranAnimal.rafraichir();
-    } catch (e) {
-      UI.annoncer(UI.messageErreur(e), 'erreur');
-    }
+    if (!t || !t.id) return;
+    return this._avecVerrouTraitement(t.id, async () => {
+      try {
+        const frais = await BD.lire('traitements', t.id);
+        if (!frais) {
+          UI.annoncer('Ce traitement n’existe plus.', 'erreur');
+          if (EcranAnimal.animal) await EcranAnimal.rafraichir();
+          return;
+        }
+        if (frais.statut === 'termine') return;
+        const aujourdhui = Dates.aujourdhui();
+        const fiche = { ...frais, statut: 'termine' };
+        if (fiche.debut && fiche.debut > aujourdhui) {
+          delete fiche.fin;
+        } else {
+          if (!fiche.fin || fiche.fin > aujourdhui) fiche.fin = aujourdhui;
+          if (fiche.debut && fiche.fin < fiche.debut) fiche.fin = fiche.debut;
+        }
+        await BD.enregistrer('traitements', fiche);
+        UI.annoncer('Traitement marqué terminé.');
+        if (EcranAnimal.animal) await EcranAnimal.rafraichir();
+      } catch (e) {
+        UI.annoncer(UI.messageErreur(e), 'erreur');
+      }
+    });
   },
 
   formulaireTraitement(a, t) {
@@ -371,6 +489,8 @@ const EcranSante = {
 
   /* ---------- Notes de santé (journal daté, avec filtre) ---------- */
   async notes(zone, a) {
+    if (this._animalNotesId && this._animalNotesId !== a.id) this.reinitialiserFiltre();
+    this._animalNotesId = a.id;
     const toutes = this.recentsDabord(await BD.parAnimal('notes', a.id), 'date');
     EcranAnimal.entete(zone, 'Notes de santé', 'Ajouter une note', () => this.formulaireNote(a, null));
 
@@ -390,9 +510,21 @@ const EcranSante = {
     const cat = el('select', { id: 'filtre-categorie' },
       el('option', { value: '', text: 'Tous les types' }),
       Object.entries(this.NOMS_NOTES).map(([v, t]) => el('option', { value: v, text: t, selected: f.categorie === v })));
-    const appliquer = () => {
-      this.filtreNotes = { du: Dates.estValide(du.value) ? du.value : '', au: Dates.estValide(au.value) ? au.value : '', categorie: cat.value };
-      EcranAnimal.rafraichir();
+    const appliquer = async () => {
+      try {
+        this.filtreNotes = { du: Dates.estValide(du.value) ? du.value : '', au: Dates.estValide(au.value) ? au.value : '', categorie: cat.value };
+        await EcranAnimal.rafraichir();
+      } catch (e) {
+        UI.annoncer(UI.messageErreur(e), 'erreur');
+      }
+    };
+    const toutAfficher = async () => {
+      try {
+        this.filtreNotes = { du: '', au: '', categorie: '' };
+        await EcranAnimal.rafraichir();
+      } catch (e) {
+        UI.annoncer(UI.messageErreur(e), 'erreur');
+      }
     };
     zone.append(el('details', { class: 'filtre', open: !!(f.du || f.au || f.categorie) },
       el('summary', { text: 'Filtrer les notes' }),
@@ -402,14 +534,15 @@ const EcranSante = {
         el('div', { class: 'champ' }, el('label', { for: 'filtre-categorie', text: 'Type' }), cat)),
       el('div', { class: 'rangee-boutons' },
         bouton('Appliquer le filtre', appliquer, { classe: 'principal' }),
-        bouton('Tout afficher', () => { this.filtreNotes = { du: '', au: '', categorie: '' }; EcranAnimal.rafraichir(); }, { classe: 'secondaire' }))));
+        bouton('Tout afficher', toutAfficher, { classe: 'secondaire' }))));
 
     const visibles = toutes.filter((n) =>
-      (!f.du || n.date >= f.du) && (!f.au || n.date <= f.au) && (!f.categorie || n.categorie === f.categorie));
+      (!f.du || (n.date && n.date >= f.du)) && (!f.au || (n.date && n.date <= f.au)) && (!f.categorie || n.categorie === f.categorie));
     zone.append(el('p', { class: 'discret', 'aria-live': 'polite', text: visibles.length === toutes.length ? toutes.length + ' note(s).' : visibles.length + ' note(s) sur ' + toutes.length + ' (filtre actif).' }));
     for (const n of visibles) {
+      const catNom = Object.prototype.hasOwnProperty.call(this.NOMS_NOTES, n.categorie) ? this.NOMS_NOTES[n.categorie] : 'Note';
       zone.append(EcranAnimal.carteFiche({
-        titre: Dates.fr(n.date) + ' — ' + (this.NOMS_NOTES[n.categorie] || 'Note'),
+        titre: Dates.fr(n.date) + ' — ' + catNom,
         lignes: [
           n.texte ? el('p', { class: 'texte-libre', text: n.texte }) : null,
           n.pieces && n.pieces.length ? this.vignettesDocuments(n.pieces) : null],
@@ -421,7 +554,9 @@ const EcranSante = {
 
   /* Les vignettes des documents d'une note (toucher = voir en grand) */
   vignettesDocuments(pieces) {
-    return el('div', { class: 'vignettes-documents' }, pieces.map((src, i) => {
+    const valides = Array.isArray(pieces) ? pieces.filter((src) => imageValide(src)) : [];
+    if (!valides.length) return null;
+    return el('div', { class: 'vignettes-documents' }, valides.map((src, i) => {
       const img = el('img', { alt: '' });
       img.src = src;
       return el('button', { type: 'button', class: 'vignette-document', 'aria-label': 'Voir le document ' + (i + 1) + ' en grand', onclick: () => UI.voirImage(src, 'Document ' + (i + 1)) }, img);

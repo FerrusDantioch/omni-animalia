@@ -29,6 +29,7 @@ les envoyer depuis un téléphone. Leur nom indique leur rôle.
 | Fichier | Rôle |
 |---|---|
 | `index.html` | la page unique de l'application (tous les écrans) |
+| `init-theme.js` | applique le thème et la taille du texte dès l'ouverture (évite un éclair visuel) |
 | `styles.css` | l'apparence et les trois thèmes (Omni-système, Sombre, Clair) |
 | `impression.css` | la mise en page du « Carnet de santé » imprimé ou en PDF |
 | `app.js` | le démarrage, la navigation, le mot de passe, les mises à jour — **et l'adresse de contact** |
@@ -53,9 +54,10 @@ les envoyer depuis un téléphone. Leur nom indique leur rôle.
 ## ✏️ L'adresse de contact
 
 Elle se règle tout en haut d'`app.js`, à la ligne `const ADRESSE_CONTACT = '…';`
-(actuellement : celle du portfolio de l'Omni-système). Elle apparaît dans la page
-À propos, avec les boutons « Envoyer un retour par e-mail » et « Copier
-l'adresse ». Après une modification, **changez le numéro de version** (voir plus bas).
+(actuellement : `omni-systeme.choking513@passmail.net`, celle du portfolio de
+l'Omni-système). Elle apparaît dans la page À propos, avec les boutons « Envoyer
+un retour par e-mail » et « Copier l'adresse ». Après une modification,
+**changez le numéro de version** (voir plus bas).
 
 ---
 
@@ -121,7 +123,10 @@ Si vous ajoutez un fichier, inscrivez-le aussi dans la liste `FICHIERS` de `sw.j
 
 ## Licence
 
-© 2026 Ferrus Dantioch — Creative Commons BY-NC-ND 4.0 (texte complet dans
-`LICENSE`). Utilisation et partage de copies identiques autorisés, gratuitement,
-en citant l'auteur ; pas d'utilisation commerciale ; pas de version modifiée.
+© 2026 Ferrus Dantioch — Licence **Creative Commons Attribution - Pas d'Utilisation Commerciale - Pas de Modification 4.0 International** (`CC BY-NC-ND 4.0` / `Attribution-NonCommercial-NoDerivatives 4.0 International`, texte complet dans `LICENSE`).
+
+Traduction et conditions en français : vous êtes autorisé à utiliser et partager des copies identiques gratuitement, sous réserve d'attribuer l'œuvre à Ferrus Dantioch, pour un usage strictement non commercial, et sans créer d'œuvres dérivées ou modifiées sans autorisation.
+
+Contact : `omni-systeme.choking513@passmail.net`
+
 Polices : SIL Open Font License 1.1 (`POLICES-OFL.txt`).
