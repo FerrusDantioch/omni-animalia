@@ -36,10 +36,13 @@ const Partage = {
   telecharger(fichier) {
     const url = URL.createObjectURL(fichier);
     const lien = el('a', { href: url, download: fichier.name, class: 'invisible' });
-    document.body.append(lien);
-    lien.click();
-    lien.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    try {
+      document.body.append(lien);
+      lien.click();
+    } finally {
+      lien.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
   },
 
   /* Ouvre le menu « Partager ».
@@ -85,7 +88,12 @@ const Agenda = {
 
   /* Protège les caractères spéciaux du format .ics */
   echapper(texte) {
-    return String(texte || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+    return String(texte || '')
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\r\n|\r|\n/g, '\\n');
   },
 
   /* Le format .ics demande des lignes de 75 octets au plus : les plus
@@ -111,14 +119,26 @@ const Agenda = {
 
   /* « 2026-11-25 » + « 17:00 » → « 20261125T170000 » (heure locale du téléphone) */
   dateIcs(date, heure) {
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return '';
     const d = date.replace(/-/g, '');
-    return heure ? d + 'T' + heure.replace(':', '') + '00' : d;
+    return heure && Dates.heureValide(heure) ? d + 'T' + heure.replace(':', '') + '00' : d;
+  },
+
+  /* Lendemain calendaire (sans plafond 2200 pour DTEND au 31/12/2200) */
+  lendemain(date) {
+    const d = Dates.lire(date);
+    if (!d) return '';
+    d.setDate(d.getDate() + 1);
+    return Dates.versTexte(d);
   },
 
   /* Heure de fin d'un rendez-vous : une heure après le début */
   finRdv(date, heure) {
+    if (!Dates.estValide(date) || !Dates.heureValide(heure)) {
+      return { date: Dates.estValide(date) ? date : '', heure: '' };
+    }
     const [h, m] = heure.split(':').map(Number);
-    if (h >= 23) return { date: Dates.ajouterJours(date, 1), heure: '00:' + String(m).padStart(2, '0') };
+    if (h >= 23) return { date: this.lendemain(date), heure: '00:' + String(m).padStart(2, '0') };
     return { date, heure: String(h + 1).padStart(2, '0') + ':' + String(m).padStart(2, '0') };
   },
 
@@ -126,21 +146,27 @@ const Agenda = {
   ics(evenements) {
     const maintenant = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
     const lignes = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Omni-Animalia//FR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
-    for (const ev of evenements) {
-      lignes.push('BEGIN:VEVENT', 'UID:' + ev.uid + '@omni-animalia', 'DTSTAMP:' + maintenant);
-      if (ev.heure) {
+    let index = 0;
+    for (const ev of (Array.isArray(evenements) ? evenements : [])) {
+      index++;
+      if (!ev || !Dates.estValide(ev.date)) continue;
+      const uidBrut = ev.uid !== undefined && ev.uid !== null ? String(ev.uid).replace(/[^A-Za-z0-9._-]/g, '-') : '';
+      const uid = uidBrut && /[A-Za-z0-9]/.test(uidBrut) ? uidBrut : ('omni-' + index + '-' + this.dateIcs(ev.date));
+      const heureOk = !!(ev.heure && Dates.heureValide(ev.heure));
+      lignes.push('BEGIN:VEVENT', 'UID:' + uid + '@omni-animalia', 'DTSTAMP:' + maintenant);
+      if (heureOk) {
         // Heure « flottante » (sans fuseau) : l'heure locale du téléphone
         const fin = this.finRdv(ev.date, ev.heure);
         lignes.push('DTSTART:' + this.dateIcs(ev.date, ev.heure), 'DTEND:' + this.dateIcs(fin.date, fin.heure));
       } else {
-        lignes.push('DTSTART;VALUE=DATE:' + this.dateIcs(ev.date), 'DTEND;VALUE=DATE:' + this.dateIcs(Dates.ajouterJours(ev.date, 1)));
+        lignes.push('DTSTART;VALUE=DATE:' + this.dateIcs(ev.date), 'DTEND;VALUE=DATE:' + this.dateIcs(this.lendemain(ev.date)));
       }
       lignes.push('SUMMARY:' + this.echapper(ev.titre));
       if (ev.description) lignes.push('DESCRIPTION:' + this.echapper(ev.description));
       if (ev.lieu) lignes.push('LOCATION:' + this.echapper(ev.lieu));
       // Une alerte la veille (que la plupart des agendas reprennent)
       lignes.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + this.echapper(ev.titre), 'TRIGGER:-P1D', 'END:VALARM');
-      if (ev.heure) lignes.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + this.echapper(ev.titre), 'TRIGGER:-PT1H', 'END:VALARM');
+      if (heureOk) lignes.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + this.echapper(ev.titre), 'TRIGGER:-PT1H', 'END:VALARM');
       lignes.push('END:VEVENT');
     }
     lignes.push('END:VCALENDAR');
@@ -149,14 +175,15 @@ const Agenda = {
 
   /* Lien qui ouvre Google Agenda avec l'événement prérempli (internet nécessaire) */
   lienGoogle(ev) {
+    if (!ev || !Dates.estValide(ev.date)) return '';
     let dates;
-    if (ev.heure) {
+    if (ev.heure && Dates.heureValide(ev.heure)) {
       const fin = this.finRdv(ev.date, ev.heure);
       dates = this.dateIcs(ev.date, ev.heure) + '/' + this.dateIcs(fin.date, fin.heure);
     } else {
-      dates = this.dateIcs(ev.date) + '/' + this.dateIcs(Dates.ajouterJours(ev.date, 1));
+      dates = this.dateIcs(ev.date) + '/' + this.dateIcs(this.lendemain(ev.date));
     }
-    const p = new URLSearchParams({ action: 'TEMPLATE', text: ev.titre, dates, details: ev.description || '' });
+    const p = new URLSearchParams({ action: 'TEMPLATE', text: ev.titre || '', dates, details: ev.description || '' });
     if (ev.lieu) p.set('location', ev.lieu);
     return 'https://calendar.google.com/calendar/render?' + p.toString();
   },
@@ -165,31 +192,48 @@ const Agenda = {
      (Sur Android, Google Agenda ne sait pas ouvrir un fichier .ics : le
      lien direct est la seule méthode fiable. Il faut internet.) */
   async proposer(ev) {
-    if (navigator.onLine === false) {
-      await UI.informer({
-        titre: 'Pas de connexion internet',
-        message: ['Google Agenda a besoin d’internet pour enregistrer l’événement.',
-          'Réessaie quand ton téléphone est connecté (Wi-Fi ou données mobiles).']
+    try {
+      if (!ev || !Dates.estValide(ev.date)) {
+        UI.annoncer('Événement invalide.', 'erreur');
+        return;
+      }
+      if (navigator.onLine === false) {
+        await UI.informer({
+          titre: 'Pas de connexion internet',
+          message: ['Google Agenda a besoin d’internet pour enregistrer l’événement.',
+            'Réessaie quand ton téléphone est connecté (Wi-Fi ou données mobiles).']
+        });
+        return;
+      }
+      const ok = await UI.confirmer({
+        titre: 'Ajouter à Google Agenda',
+        message: [
+          '« ' + (ev.titre || '') + ' », ' + (ev.heure && Dates.heureValide(ev.heure) ? Dates.frHeure(ev.date, ev.heure) : 'le ' + Dates.fr(ev.date)) + '.',
+          'Google Agenda va s’ouvrir avec l’événement déjà rempli. Vérifie-le, puis touche « Enregistrer ».',
+          'Ton agenda pourra ensuite te prévenir, même quand Omni-Animalia est fermée (avec les notifications réglées dans Google Agenda).'
+        ],
+        oui: 'Ouvrir Google Agenda'
       });
-      return;
+      if (ok) {
+        const url = this.lienGoogle(ev);
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
     }
-    const ok = await UI.confirmer({
-      titre: 'Ajouter à Google Agenda',
-      message: [
-        '« ' + ev.titre + ' », ' + (ev.heure ? Dates.frHeure(ev.date, ev.heure) : 'le ' + Dates.fr(ev.date)) + '.',
-        'Google Agenda va s’ouvrir avec l’événement déjà rempli. Vérifie-le, puis touche « Enregistrer ».',
-        'Ton agenda pourra ensuite te prévenir, même quand Omni-Animalia est fermée (avec les notifications réglées dans Google Agenda).'
-      ],
-      oui: 'Ouvrir Google Agenda'
-    });
-    if (ok) window.open(this.lienGoogle(ev), '_blank', 'noopener');
   },
 
   /* Partage (ou télécharge) un fichier .ics contenant ces événements */
   async envoyerFichier(evenements, nom) {
-    const fichier = new File([this.ics(evenements)], nom + '.ics', { type: 'text/calendar' });
-    const r = await Partage.envoyer(fichier, 'Agenda');
-    if (r === 'telecharge') UI.annoncer('Fichier d’agenda téléchargé. Ouvre-le depuis « Téléchargements » pour l’ajouter à ton agenda.');
-    else if (r === 'partage') UI.annoncer('Fichier d’agenda envoyé.');
+    try {
+      if (!Array.isArray(evenements) || !evenements.length) return;
+      const base = Partage.nomFichier(nom || 'omni-animalia-rappels');
+      const fichier = new File([this.ics(evenements)], base + '.ics', { type: 'text/calendar' });
+      const r = await Partage.envoyer(fichier, 'Agenda');
+      if (r === 'telecharge') UI.annoncer('Fichier d’agenda téléchargé. Ouvre-le depuis « Téléchargements » pour l’ajouter à ton agenda.');
+      else if (r === 'partage') UI.annoncer('Fichier d’agenda envoyé.');
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
   }
 };

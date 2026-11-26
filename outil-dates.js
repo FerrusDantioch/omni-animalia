@@ -89,29 +89,35 @@ const Dates = {
 
   /* Ajoute (ou retire) des jours à une date */
   ajouterJours(texte, n) {
+    if (!Number.isInteger(n)) return '';
     const d = this.lire(texte);
     if (!d) return '';
     d.setDate(d.getDate() + n);
-    return this.versTexte(d);
+    const res = this.versTexte(d);
+    return this.estValide(res) ? res : '';
   },
 
   /* Ajoute des mois. « jourAncre » est le jour du mois voulu à l'origine :
      une tâche prévue le 31 janvier tombe le 28 (ou 29) février, puis
      revient au 31 mars, au lieu de rester bloquée au 28. */
   ajouterMois(texte, n, jourAncre) {
+    if (!Number.isInteger(n)) return '';
     const d = this.lire(texte);
     if (!d) return '';
-    const jour = jourAncre || d.getDate();
+    const jour = (Number.isInteger(jourAncre) && jourAncre >= 1) ? Math.min(jourAncre, 31) : d.getDate();
     let a = d.getFullYear();
     let m = d.getMonth() + n;            // mois de 0 à 11, peut déborder
     a += Math.floor(m / 12);
     m = ((m % 12) + 12) % 12;
+    if (a < 1900 || a > 2200) return '';
     const j = Math.min(jour, this.joursDansMois(a, m + 1));
-    return this.versTexte(new Date(a, m, j));
+    const res = this.versTexte(new Date(a, m, j));
+    return this.estValide(res) ? res : '';
   },
 
   /* Avance d'un intervalle : n jours, semaines, mois ou ans */
   ajouterIntervalle(texte, n, unite, jourAncre) {
+    if (!Number.isInteger(n)) return '';
     switch (unite) {
       case 'jours':    return this.ajouterJours(texte, n);
       case 'semaines': return this.ajouterJours(texte, n * 7);
@@ -126,13 +132,27 @@ const Dates = {
      jusqu'à dépasser « apres » (en général : aujourd'hui). Ainsi, une tâche
      cochée avec du retard ne crée pas une pile de tâches déjà en retard. */
   prochaineEcheance(echeance, n, unite, jourAncre, apres) {
-    let suivante = this.ajouterIntervalle(echeance, n, unite, jourAncre);
-    let securite = 0;                       // évite toute boucle sans fin
-    while (suivante && apres && suivante <= apres && securite < 5000) {
-      suivante = this.ajouterIntervalle(suivante, n, unite, jourAncre);
-      securite++;
+    if (!this.estValide(echeance) || !Number.isInteger(n) || n < 1) return '';
+    if (!apres) return this.ajouterIntervalle(echeance, n, unite, jourAncre);
+    if (!this.estValide(apres)) return '';
+    if (unite === 'jours' || unite === 'semaines') {
+      const pas = unite === 'semaines' ? n * 7 : n;
+      const diff = this.ecartJours(echeance, apres);
+      const k = diff < pas ? 1 : Math.floor(diff / pas) + 1;
+      return this.ajouterJours(echeance, k * pas);
     }
-    return suivante;
+    if (unite === 'mois' || unite === 'ans') {
+      const pasMois = unite === 'ans' ? n * 12 : n;
+      const [a0, m0, j0] = echeance.split('-').map(Number);
+      const [aT, mT] = apres.split('-').map(Number);
+      const ancre = (Number.isInteger(jourAncre) && jourAncre >= 1) ? Math.min(jourAncre, 31) : j0;
+      const diffMois = (aT - a0) * 12 + (mT - m0);
+      const k = diffMois < pasMois ? 1 : Math.floor(diffMois / pasMois);
+      let cand = this.ajouterMois(echeance, k * pasMois, ancre);
+      if (cand && cand <= apres) cand = this.ajouterMois(echeance, (k + 1) * pasMois, ancre);
+      return cand;
+    }
+    return '';
   },
 
   /* Âge détaillé entre la naissance et une date de référence.
@@ -187,7 +207,7 @@ const Dates = {
 
   /* Texte lisible d'une répétition : « tous les 3 mois », « chaque semaine » */
   texteRecurrence(n, unite) {
-    if (!n || !unite) return '';
+    if (!Number.isInteger(n) || n < 1 || !unite) return '';
     const noms = {
       jours:    ['chaque jour', 'jours'],
       semaines: ['chaque semaine', 'semaines'],

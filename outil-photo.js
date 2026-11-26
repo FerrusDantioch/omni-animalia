@@ -30,10 +30,16 @@ const Photo = {
       } catch (e) { /* on essaie l'autre méthode ci-dessous */ }
     }
     return new Promise((ok, echec) => {
-      const url = URL.createObjectURL(fichier);
+      let url;
+      try {
+        url = URL.createObjectURL(fichier);
+      } catch (e) {
+        return echec(new Error('Cette image n’a pas pu être lue. Essaie une autre photo (JPEG ou PNG).'));
+      }
       const img = new Image();
       img.onload = () => { URL.revokeObjectURL(url); ok(img); };
       img.onerror = () => { URL.revokeObjectURL(url); echec(new Error('Cette image n’a pas pu être lue. Essaie une autre photo (JPEG ou PNG).')); };
+      img.onabort = img.onerror;
       img.src = url;
     });
   },
@@ -41,28 +47,39 @@ const Photo = {
   /* Renvoie la photo réduite, sous forme de texte « data:image/jpeg;base64,… »
      options (facultatif) : { cote, qualite }, par exemple Photo.DOCUMENT */
   async reduire(fichier, options) {
-    const cote = (options && options.cote) || this.COTE_MAX;
-    const qualite = (options && options.qualite) || this.QUALITE;
-    if (!fichier || !/^image\//.test(fichier.type || 'image/')) {
-      throw new Error('Ce fichier n’est pas une image.');
+    const cote = Number.isFinite(options && options.cote) && options.cote > 0 ? options.cote : this.COTE_MAX;
+    const qualite = Number.isFinite(options && options.qualite) && options.qualite > 0 && options.qualite <= 1 ? options.qualite : this.QUALITE;
+    const type = fichier && typeof fichier.type === 'string' ? fichier.type.trim().toLowerCase() : '';
+    if (!fichier || !/^image\/[a-z0-9.+-]+$/.test(type) || type.includes('svg')) {
+      throw new Error('Ce fichier n’est pas une image prise en charge (JPEG, PNG ou WebP).');
     }
     const image = await this.charger(fichier);
-    const largeur = image.width;
-    const hauteur = image.height;
-    if (!largeur || !hauteur) throw new Error('Cette image est vide ou abîmée.');
+    try {
+      const largeur = image.naturalWidth ?? image.width;
+      const hauteur = image.naturalHeight ?? image.height;
+      if (!Number.isFinite(largeur) || !Number.isFinite(hauteur) || largeur <= 0 || hauteur <= 0) {
+        throw new Error('Cette image est vide ou abîmée.');
+      }
 
-    const echelle = Math.min(1, cote / Math.max(largeur, hauteur));
-    const l = Math.max(1, Math.round(largeur * echelle));
-    const h = Math.max(1, Math.round(hauteur * echelle));
-    const canvas = document.createElement('canvas');
-    canvas.width = l;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    // Fond clair : une image PNG transparente ne devient pas noire en JPEG
-    ctx.fillStyle = '#f7f8f9';
-    ctx.fillRect(0, 0, l, h);
-    ctx.drawImage(image, 0, 0, l, h);
-    if (image.close) image.close();     // libère la mémoire tout de suite
-    return canvas.toDataURL('image/jpeg', qualite);
+      const echelle = Math.min(1, cote / Math.max(largeur, hauteur));
+      const l = Math.max(1, Math.round(largeur * echelle));
+      const h = Math.max(1, Math.round(hauteur * echelle));
+      const canvas = document.createElement('canvas');
+      canvas.width = l;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Impossible de préparer cette image sur cet appareil.');
+      // Fond clair : une image PNG transparente ne devient pas noire en JPEG
+      ctx.fillStyle = '#f7f8f9';
+      ctx.fillRect(0, 0, l, h);
+      ctx.drawImage(image, 0, 0, l, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', qualite);
+      if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/jpeg;base64,')) {
+        throw new Error('Cette image n’a pas pu être enregistrée au format JPEG.');
+      }
+      return dataUrl;
+    } finally {
+      if (image && typeof image.close === 'function') image.close();     // libère la mémoire tout de suite
+    }
   }
 };

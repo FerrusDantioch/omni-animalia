@@ -14,6 +14,7 @@
 
 const EcranGarde = {
   animal: null,
+  _tour: 0,
 
   /* Une partie de la fiche, avec son titre (rien si elle est vide) */
   partie(titre, ...contenu) {
@@ -30,13 +31,23 @@ const EcranGarde = {
     const rappels = Rappels.calculer(await BD.toutLire()).filter((r) => r.animalId === a.id && r.ecart >= 0 && r.ecart <= 30);
     const ligne = (l, v) => EcranAnimal.ligne(l, v);
     // À l'écran, un numéro de téléphone devient un bouton « Appeler »
-    const tel = (numero) => (numero
-      ? (pourImpression ? ligne('Téléphone', numero) : el('p', { class: 'ligne' }, EcranVeto.lienTelephone(numero)))
-      : null);
+    const tel = (numero) => {
+      if (!numero) return null;
+      if (pourImpression) return ligne('Téléphone', numero);
+      const lien = EcranVeto.lienTelephone(numero);
+      return lien ? el('p', { class: 'ligne' }, lien) : null;
+    };
 
-    const enCours = traitements.filter((t) => t.statut !== 'termine');
+    const aujourdhui = Dates.aujourdhui();
+    const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+    const enCours = traitements.filter((t) => t.statut !== 'termine').sort((x, y) => {
+      const fx = x.debut && Dates.estValide(x.debut) && x.debut > aujourdhui ? 1 : 0;
+      const fy = y.debut && Dates.estValide(y.debut) && y.debut > aujourdhui ? 1 : 0;
+      if (fx !== fy) return fx - fy;
+      return cmp(x.debut || '', y.debut || '') || cmp(String((x && x.id) ?? ''), String((y && y.id) ?? ''));
+    });
     const allergies = notes.filter((n) => n.categorie === 'allergie');
-    const photo = a.photo ? el('img', { class: 'garde-photo', alt: '' }) : null;
+    const photo = a.photo && imageValide(a.photo) ? el('img', { class: 'garde-photo', alt: '' }) : null;
     if (photo) photo.src = a.photo;
     const age = Dates.age(a.naissance, a.naissanceApprox);
 
@@ -45,7 +56,7 @@ const EcranGarde = {
         photo,
         el('div', {},
           el('p', { class: 'etiquette', text: 'Fiche de garde' }),
-          el('p', { class: 'garde-nom', text: a.nom }),
+          el('p', { class: 'garde-nom', text: a.nom || '' }),
           el('p', { text: [EcranAccueil.sousTitre(a), age ? age : '', NOMS_SEXE[a.sexe] && a.sexe !== 'inconnu' ? NOMS_SEXE[a.sexe] : ''].filter(Boolean).join(' · ') }))),
 
       this.partie('À contacter',
@@ -53,7 +64,7 @@ const EcranGarde = {
           el('p', { class: 'ligne' }, el('strong', { text: 'Propriétaire : ' }), contact.nom || ''),
           tel(contact.telephone)] : null,
         veto ? [
-          el('p', { class: 'ligne' }, el('strong', { text: 'Vétérinaire : ' }), veto.nom + (veto.clinique ? ' — ' + veto.clinique : '')),
+          el('p', { class: 'ligne' }, el('strong', { text: 'Vétérinaire : ' }), (veto.nom || '') + (veto.clinique ? ' — ' + veto.clinique : '')),
           tel(veto.telephone),
           ligne('Adresse', veto.adresse),
           ligne('Infos', veto.notes)] : null),
@@ -72,17 +83,23 @@ const EcranGarde = {
         ligne('Remarques', a.alimRemarques)),
 
       this.partie('Médicaments en cours',
-        enCours.map((t) => el('div', { class: 'garde-medicament' },
-          el('p', { class: 'ligne' }, el('strong', { text: t.nom })),
-          ligne('Dose', t.dose),
-          ligne('Quand', t.frequence),
-          t.prisesParJour ? ligne('Prises par jour', String(t.prisesParJour)) : null,
-          t.fin ? ligne('Jusqu’au', Dates.fr(t.fin)) : null))),
+        enCours.map((t) => {
+          const estAVenir = !!(t.debut && Dates.estValide(t.debut) && t.debut > aujourdhui);
+          return el('div', { class: 'garde-medicament' },
+            el('p', { class: 'ligne' },
+              el('strong', { text: t.nom || '' }),
+              estAVenir ? el('span', { class: 'etat bientot', text: ' — À venir (à partir du ' + Dates.fr(t.debut) + ')' }) : null),
+            ligne('Dose', t.dose),
+            ligne('Quand', t.frequence),
+            t.prisesParJour ? ligne('Prises par jour', String(t.prisesParJour)) : null,
+            t.debut && Dates.estValide(t.debut) && !estAVenir ? ligne('Depuis le', Dates.fr(t.debut)) : null,
+            t.fin && Dates.estValide(t.fin) ? ligne('Jusqu’au', Dates.fr(t.fin)) : null);
+        })),
 
       this.partie('Consignes', a.consignesGarde ? el('p', { class: 'texte-libre', text: a.consignesGarde }) : null),
 
       this.partie('Prévu dans les 30 prochains jours',
-        rappels.length ? el('ul', {}, rappels.map((r) => el('li', { text: Dates.fr(r.date) + (r.heure ? ' à ' + r.heure.replace(':', ' h ') : '') + ' : ' + r.titre }))) : null),
+        rappels.length ? el('ul', {}, rappels.map((r) => el('li', { text: Dates.fr(r.date) + (r.heure && Dates.heureValide(r.heure) ? ' à ' + r.heure.replace(':', ' h ') : '') + ' : ' + (r.titre || '') }))) : null),
 
       this.partie('Identification',
         ligne('Puce électronique', a.puce),
@@ -95,22 +112,31 @@ const EcranGarde = {
 
   /* L'écran « Fiche de garde » */
   async afficher(id) {
+    const tour = ++this._tour;
     const a = await BD.lire('animaux', id);
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
     if (!a) {
       UI.annoncer('Cet animal n’existe plus.', 'erreur');
       return Nav.remplacer({ vue: 'accueil' });
     }
+    const fiche = await this.construire(a, false);
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
+    const contact = await BD.reglage('contactGarde', null);
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
+
     this.animal = a;
     $('#garde-titre').textContent = 'Garde de ' + a.nom;
-    const zone = vider($('#garde-contenu'));
-    zone.append(el('p', { class: 'aide', text: 'À montrer ou à imprimer pour la personne qui garde ' + a.nom + '. Les informations viennent de sa fiche : identité, alimentation, notes d’allergie, traitements en cours, vétérinaire habituel et rappels.' }));
-    zone.append(await this.construire(a, false));
-    const contact = await BD.reglage('contactGarde', null);
-    zone.append(el('div', { class: 'pile-boutons' },
-      bouton('Imprimer ou enregistrer en PDF', () => this.imprimer(a), { classe: 'principal large', icone: 'imprimer' }),
-      a.archive ? null : bouton(a.consignesGarde ? 'Modifier les consignes' : 'Ajouter des consignes', () => this.formulaireConsignes(a), { classe: 'secondaire large', icone: 'crayon' }),
-      bouton(contact ? 'Modifier mon contact' : 'Ajouter mon contact (propriétaire)', () => this.formulaireContact(contact), { classe: 'secondaire large', icone: 'telephone' })));
-    zone.append(el('p', { class: 'aide', text: 'Ton contact est commun à toutes les fiches de garde. Pour changer l’alimentation, les traitements ou le vétérinaire, modifie la fiche de l’animal.' }));
+    const frag = document.createDocumentFragment();
+    frag.append(
+      el('p', { class: 'aide', text: 'À montrer ou à imprimer pour la personne qui garde ' + a.nom + '. Les informations viennent de sa fiche : identité, alimentation, notes d’allergie, traitements en cours, vétérinaire habituel et rappels.' }),
+      fiche,
+      el('div', { class: 'pile-boutons' },
+        bouton('Imprimer ou enregistrer en PDF', () => this.imprimer(a), { classe: 'principal large', icone: 'imprimer' }),
+        a.archive ? null : bouton(a.consignesGarde ? 'Modifier les consignes' : 'Ajouter des consignes', () => this.formulaireConsignes(a), { classe: 'secondaire large', icone: 'crayon' }),
+        bouton(contact ? 'Modifier mon contact' : 'Ajouter mon contact (propriétaire)', () => this.formulaireContact(contact), { classe: 'secondaire large', icone: 'telephone' })),
+      el('p', { class: 'aide', text: 'Ton contact est commun à toutes les fiches de garde. Pour changer l’alimentation, les traitements ou le vétérinaire, modifie la fiche de l’animal.' })
+    );
+    vider($('#garde-contenu')).append(frag);
   },
 
   formulaireConsignes(a) {
@@ -137,6 +163,13 @@ const EcranGarde = {
         { nom: 'nom', label: 'Nom ou prénom', type: 'texte', long: 120 },
         { nom: 'telephone', label: 'Téléphone', type: 'tel', long: 30 }
       ],
+      valider: (v) => {
+        const e = {};
+        if (v.telephone && !/^[0-9+(). -]{3,30}$/.test(v.telephone)) {
+          e.telephone = 'Ce numéro contient des caractères inattendus (seuls les chiffres, espaces simples, +, -, points et parenthèses sont acceptés).';
+        }
+        return e;
+      },
       enregistrer: async (v) => {
         await BD.definirReglage('contactGarde', v.nom || v.telephone ? { nom: v.nom, telephone: v.telephone } : null);
         return 'Contact enregistré.';
@@ -146,8 +179,18 @@ const EcranGarde = {
 
   /* Imprime la fiche (même mécanisme que le carnet de santé) */
   async imprimer(a) {
-    const carnet = vider($('#carnet'));
-    carnet.append(await this.construire(a, true));
-    Impression.lancer('Fiche de garde - ' + a.nom);
+    const estVerrouille = () => (typeof Verrou !== 'undefined' && Verrou._promesse) || ($('#verrou') && !$('#verrou').hidden);
+    if (estVerrouille()) return;
+    try {
+      const contenu = await this.construire(a, true);
+      if (estVerrouille()) return;
+      const carnet = vider($('#carnet'));
+      carnet.append(contenu);
+      Impression.lancer('Fiche de garde - ' + (a.nom || ''));
+    } catch (e) {
+      const carnet = $('#carnet');
+      if (carnet) vider(carnet);
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
   }
 };
