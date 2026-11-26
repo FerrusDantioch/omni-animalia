@@ -275,7 +275,24 @@ lancer('Omni-Animalia', async () => {
   await section('Sauvegarde puis restauration', async () => {
     await p.click('[data-onglet="reglages"]');
     await pause(p, 600);
-    const [telechargement] = await Promise.all([p.waitForEvent('download'), p.click('#bouton-sauvegarder')]);
+    const dlPromise = p.waitForEvent('download', { timeout: 10000 });
+    await p.click('#bouton-sauvegarder');
+    const dlBtn = p.locator('#dialogue[open] button', { hasText: 'Télécharger' }).first();
+    const issue = await Promise.race([
+      dlPromise.then((d) => ({ type: 'download', d })),
+      dlBtn.waitFor({ state: 'visible', timeout: 3000 }).then(() => ({ type: 'dialogue' })).catch(() => null)
+    ]);
+    let telechargement;
+    if (issue && issue.type === 'download') {
+      telechargement = issue.d;
+    } else if (issue && issue.type === 'dialogue') {
+      await dlBtn.click();
+      telechargement = await dlPromise;
+      await p.waitForSelector('#dialogue:not([open])', { state: 'attached' });
+      await pause(p);
+    } else {
+      telechargement = await dlPromise;
+    }
     fichierSauvegarde = await telechargement.path();
     const contenu = JSON.parse(fs.readFileSync(fichierSauvegarde, 'utf8'));
     verifier(contenu.format === 'omni-animaux-sauvegarde' && contenu.versionFormat === 1, 'fichier avec format et numéro de version');
@@ -663,8 +680,19 @@ lancer('Omni-Animalia', async () => {
     const fichierSw = path.join(RACINE, 'sw.js');
     const original = fs.readFileSync(fichierSw, 'utf8');
     const actuel = original.match(/omni-animalia-v\d+/)[0];      // le numéro en cours
-    const remettre = () => fs.writeFileSync(fichierSw, original);
+    let remis = false;
+    const remettre = () => {
+      if (remis) return;
+      remis = true;
+      try { fs.writeFileSync(fichierSw, original); } catch (e) {}
+    };
+    const surSignal = (sig) => {
+      remettre();
+      process.exit(sig === 'SIGINT' ? 130 : 143);
+    };
     process.once('exit', remettre);
+    process.once('SIGINT', surSignal);
+    process.once('SIGTERM', surSignal);
     try {
       fs.writeFileSync(fichierSw, original.replace(/omni-animalia-v\d+/, 'omni-animalia-v999'));
       await r.p.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
@@ -678,6 +706,9 @@ lancer('Omni-Animalia', async () => {
       verifier(apres.includes('omni-animalia-v999') && !apres.includes(actuel), '« Mettre à jour » : nouvelle version en place, ancien cache supprimé', apres);
     } finally {
       remettre();
+      process.removeListener('exit', remettre);
+      process.removeListener('SIGINT', surSignal);
+      process.removeListener('SIGTERM', surSignal);
     }
     await r.ctx.close();
   });
