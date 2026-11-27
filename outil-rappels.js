@@ -106,5 +106,44 @@ const Rappels = {
       else if (r.ecart <= 7) c.bientot++;
     }
     return compte;
+  },
+
+  /* Prises de médicaments restantes aujourd'hui, par animal actif :
+     { [animalId]: { total, parTraitement: { [traitementId]: restant } } } */
+  prisesANoter(donnees, reference) {
+    const res = Object.create(null);
+    const d = donnees && typeof donnees === 'object' ? donnees : {};
+    const aujourdhui = Dates.estValide(reference) ? reference : Dates.aujourdhui();
+    const animaux = Array.isArray(d.animaux) ? d.animaux : [];
+    const actifs = new Set(animaux.filter((a) => a && !a.archive && typeof a.id === 'string' && a.id).map((a) => a.id));
+    for (const t of Array.isArray(d.traitements) ? d.traitements : []) {
+      if (!t || t.statut === 'termine' || !actifs.has(t.animalId)) continue;
+      if (typeof t.prisesParJour !== 'number' || !Number.isFinite(t.prisesParJour) || t.prisesParJour <= 0) continue;
+      if (t.debut && (!Dates.estValide(t.debut) || t.debut > aujourdhui)) continue;
+      if (t.fin && (!Dates.estValide(t.fin) || t.fin < aujourdhui)) continue;
+      const prises = t.prises && typeof t.prises === 'object' && !Array.isArray(t.prises) &&
+        Object.prototype.hasOwnProperty.call(t.prises, aujourdhui) && Array.isArray(t.prises[aujourdhui])
+        ? t.prises[aujourdhui] : [];
+      const restant = Math.max(0, t.prisesParJour - prises.length);
+      if (restant <= 0) continue;
+      const entree = res[t.animalId] || (res[t.animalId] = { total: 0, parTraitement: Object.create(null) });
+      entree.total += restant;
+      if (typeof t.id === 'string' && t.id) entree.parTraitement[t.id] = restant;
+    }
+    return res;
+  },
+
+  /* Pastilles des onglets de la fiche animal : vrai si un élément est en
+     retard ou prévu aujourd'hui (y compris prises restantes du jour). */
+  pastillesAnimal(donnees, animalId, reference) {
+    const p = { vaccins: false, traitements: false, antiparasitaires: false, taches: false };
+    if (typeof animalId !== 'string' || !animalId || !donnees || typeof donnees !== 'object') return p;
+    for (const r of this.calculer(donnees, reference)) {
+      if (r.animalId !== animalId || r.ecart > 0) continue;
+      if (Object.prototype.hasOwnProperty.call(p, r.section)) p[r.section] = true;
+    }
+    const prises = this.prisesANoter(donnees, reference);
+    if (prises[animalId] && prises[animalId].total > 0) p.traitements = true;
+    return p;
   }
 };

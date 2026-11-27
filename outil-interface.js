@@ -244,11 +244,127 @@ const UI = {
     await this.choisir({ titre, message, choix: [{ valeur: true, texte: ok || 'J’ai compris', principal: true }] });
   },
 
-  /* Copie un texte (numéro de puce…) dans le presse-papiers */
+  /* Demande un mot de passe dans une fenêtre modale (chiffrement / déchiffrement).
+     Renvoie le mot de passe saisi, ou null si on annule / ferme. */
+  demanderMotDePasse(options) {
+    const o = options || {};
+    return new Promise((resoudre) => {
+      const dlg = $('#dialogue');
+      if (this._fermerDialogue) this._fermerDialogue();
+      if (!dlg) return resoudre(null);
+      if (dlg.open) dlg.close();
+      vider(dlg);
+      const titreId = 'dialogue-titre';
+      dlg.setAttribute('aria-labelledby', titreId);
+      const messages = [].concat(o.message || []);
+
+      const saisie = el('input', {
+        type: 'password',
+        id: 'dialogue-mdp',
+        maxlength: 200,
+        autocomplete: o.confirmation ? 'new-password' : 'current-password'
+      });
+      let saisieConf = null;
+      if (o.confirmation) {
+        saisieConf = el('input', {
+          type: 'password',
+          id: 'dialogue-mdp-conf',
+          maxlength: 200,
+          autocomplete: 'new-password'
+        });
+      }
+      const msgErreur = el('p', {
+        id: 'dialogue-mdp-erreur',
+        class: 'message-erreur',
+        role: 'alert',
+        hidden: !o.erreur,
+        text: o.erreur || ''
+      });
+
+      let reponse = null;
+      const form = el('form', { class: 'dialogue-corps', novalidate: true },
+        el('h2', { id: titreId, text: o.titre || 'Mot de passe' }),
+        messages.map((m) => el('p', { text: m })),
+        el('label', { for: 'dialogue-mdp', text: 'Mot de passe :' }),
+        saisie,
+        o.aide ? el('p', { class: 'aide', text: o.aide }) : null,
+        saisieConf ? [
+          el('label', { for: 'dialogue-mdp-conf', text: 'Confirme le mot de passe :' }),
+          saisieConf
+        ] : null,
+        msgErreur,
+        el('div', { class: 'dialogue-boutons' },
+          el('button', { type: 'button', class: 'bouton', text: 'Annuler', onclick: () => { reponse = null; dlg.close(); } }),
+          el('button', { type: 'submit', class: 'bouton principal', text: o.ok || 'Valider' })
+        )
+      );
+
+      const montrerErreur = (texte, champ) => {
+        msgErreur.textContent = texte;
+        msgErreur.hidden = false;
+        if (champ) {
+          champ.setAttribute('aria-invalid', 'true');
+          champ.focus();
+        }
+      };
+      const effacerErreur = () => {
+        saisie.removeAttribute('aria-invalid');
+        if (saisieConf) saisieConf.removeAttribute('aria-invalid');
+        if (!msgErreur.hidden) {
+          msgErreur.textContent = '';
+          msgErreur.hidden = true;
+        }
+      };
+      saisie.addEventListener('input', effacerErreur);
+      if (saisieConf) saisieConf.addEventListener('input', effacerErreur);
+
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const mdp = saisie.value;
+        if (!mdp) {
+          return montrerErreur('Tape ton mot de passe.', saisie);
+        }
+        if (o.confirmation) {
+          if (!mdp.trim()) {
+            return montrerErreur('Le mot de passe ne peut pas contenir uniquement des espaces.', saisie);
+          }
+          if (mdp.length < 4) {
+            return montrerErreur('Le mot de passe doit faire au moins 4 caractères.', saisie);
+          }
+          if (mdp !== saisieConf.value) {
+            return montrerErreur('Les deux mots de passe ne sont pas identiques.', saisieConf);
+          }
+        }
+        reponse = mdp;
+        dlg.close();
+      });
+
+      dlg.append(form);
+      let resolu = false;
+      const terminer = () => {
+        if (resolu) return;
+        resolu = true;
+        dlg.removeEventListener('close', surClose);
+        if (this._fermerDialogue === terminer) this._fermerDialogue = null;
+        saisie.value = '';
+        if (saisieConf) saisieConf.value = '';
+        resoudre(reponse);
+      };
+      const surClose = () => { if (!dlg.open) terminer(); };
+      this._fermerDialogue = terminer;
+      dlg.addEventListener('close', surClose);
+      dlg.showModal();
+      saisie.focus();
+    });
+  },
+
+  /* Copie un texte (numéro de puce…) dans le presse-papiers.
+     Renvoie true si la copie a réussi, false sinon. */
   async copier(texte) {
     try {
       await navigator.clipboard.writeText(texte);
       this.annoncer('Copié : ' + texte);
+      return true;
     } catch (e) {
       // Ancienne méthode, si la nouvelle est refusée
       const zone = el('textarea', { class: 'invisible', 'aria-hidden': 'true' });
@@ -259,6 +375,7 @@ const UI = {
       try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
       zone.remove();
       this.annoncer(ok ? 'Copié : ' + texte : 'La copie n’a pas fonctionné. Tu peux recopier le numéro à la main.', ok ? 'info' : 'erreur');
+      return ok;
     }
   },
 

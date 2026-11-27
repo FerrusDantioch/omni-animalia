@@ -96,16 +96,19 @@ const EcranReglages = {
       choixFichier.value = '';
       if (f) this.restaurer(f);
     });
+    const caseChiffrer = el('input', { type: 'checkbox', id: 'sauvegarde-chiffree' });
     frag.append(this.bloc('Sauvegarde et restauration',
       el('div', { class: 'encart attention' },
         el('p', { text: 'Tes données restent uniquement sur cet appareil. Si le téléphone est perdu, réinitialisé, ou si les données du navigateur sont effacées, elles disparaissent.' }),
         el('p', { text: 'Fais une sauvegarde régulièrement, et garde le fichier ailleurs (ordinateur, clé USB, courriel à toi-même…).' })),
       el('p', { text: 'Dernière sauvegarde : ' + (derniere ? Dates.fr(derniere) : 'jamais') }),
+      el('div', { class: 'options-sauvegarde' },
+        el('div', { class: 'case' }, caseChiffrer, el('label', { for: 'sauvegarde-chiffree', text: 'Protéger la sauvegarde par mot de passe' }))),
       el('div', { class: 'pile-boutons' },
         bouton('Sauvegarder toutes mes données', () => this.sauvegarder(), { classe: 'principal large', icone: 'sauver', id: 'bouton-sauvegarder' }),
         bouton('Restaurer une sauvegarde', () => choixFichier.click(), { classe: 'secondaire large', icone: 'restaurer', id: 'bouton-restaurer' })),
       choixFichier,
-      el('p', { class: 'aide', text: 'Le fichier de sauvegarde contient tout, photos et documents compris. Téléchargé, il finit par .json et se retrouve en général dans « Téléchargements » ; partagé, il finit par .txt (c’est normal : « Restaurer » accepte les deux). Il n’est pas chiffré : garde-le en lieu sûr.' })));
+      el('p', { class: 'aide', text: 'Le fichier de sauvegarde contient tout, photos et documents compris. Téléchargé, il finit par .json et se retrouve en général dans « Téléchargements » ; partagé, il finit par .txt (c’est normal : « Restaurer » accepte les deux). Si tu coches l’option ci-dessus, le fichier est chiffré avec ton mot de passe ; sinon, il reste lisible tel quel : garde-le en lieu sûr.' })));
 
     // 4. Mot de passe
     const blocMdp = this.bloc('Mot de passe',
@@ -171,6 +174,21 @@ const EcranReglages = {
      - Télécharger : le fichier va dans « Téléchargements ». */
   async sauvegarder() {
     try {
+      const chiffrer = !!(typeof Nav !== 'undefined' && Nav.etat && Nav.etat.vue === 'reglages' && $('#sauvegarde-chiffree') && $('#sauvegarde-chiffree').checked);
+      let motDePasse = '';
+      if (chiffrer) {
+        motDePasse = await UI.demanderMotDePasse({
+          titre: 'Protéger la sauvegarde',
+          message: [
+            'Choisis un mot de passe pour chiffrer ce fichier.',
+            'Note-le bien : sans lui, la sauvegarde ne pourra pas être restaurée.'
+          ],
+          aide: 'Au moins 4 caractères.',
+          confirmation: true,
+          ok: 'Continuer'
+        });
+        if (!motDePasse) return;
+      }
       let mode = 'telecharger';
       if (Partage.possible(new File(['{}'], 'essai.txt', { type: 'text/plain' }))) {
         mode = await UI.choisir({
@@ -187,15 +205,18 @@ const EcranReglages = {
         });
         if (!mode) return;
       }
-      const r = await Sauvegarde.exporter(mode);
+      const r = await Sauvegarde.exporter(mode, motDePasse);
       if (r.resultat === 'annule') {
         UI.annoncer('Partage annulé : la sauvegarde n’a été envoyée nulle part.');
         return;
       }
       const taille = r.taille > 1024 * 1024 ? UI.nombre(r.taille / (1024 * 1024), 1) + ' Mo' : UI.nombre(Math.ceil(r.taille / 1024), 0) + ' Ko';
+      const prefixe = motDePasse
+        ? (r.resultat === 'partage' ? 'Sauvegarde chiffrée envoyée' : 'Sauvegarde chiffrée créée')
+        : (r.resultat === 'partage' ? 'Sauvegarde envoyée' : 'Sauvegarde créée');
       UI.annoncer(r.resultat === 'partage'
-        ? 'Sauvegarde envoyée : « ' + r.nom + ' » (' + taille + ').'
-        : 'Sauvegarde créée : « ' + r.nom + ' » (' + taille + '). Elle se trouve en général dans « Téléchargements ».');
+        ? prefixe + ' : « ' + r.nom + ' » (' + taille + ').'
+        : prefixe + ' : « ' + r.nom + ' » (' + taille + '). Elle se trouve en général dans « Téléchargements ».');
       if (Nav.etat && Nav.etat.vue === 'reglages') await this.afficher();
       if (Nav.etat && Nav.etat.vue === 'accueil') await EcranAccueil.afficher();
     } catch (e) {
@@ -207,7 +228,32 @@ const EcranReglages = {
   async restaurer(fichier) {
     let lu;
     try {
-      lu = await Sauvegarde.lireFichier(fichier);
+      const brut = await Sauvegarde.lireObjet(fichier);
+      if (Sauvegarde.estChiffree(brut)) {
+        Sauvegarde.verifierEnveloppe(brut);
+        let erreur = '';
+        while (!lu) {
+          const mdp = await UI.demanderMotDePasse({
+            titre: 'Sauvegarde chiffrée',
+            message: 'Entre le mot de passe utilisé lors de cette sauvegarde.',
+            erreur,
+            ok: 'Déchiffrer'
+          });
+          if (!mdp) return;
+          try {
+            const dechiffre = await Sauvegarde.dechiffrer(brut, mdp);
+            lu = Sauvegarde.valider(dechiffre);
+          } catch (e) {
+            if (e && e.message === 'Mot de passe incorrect ou sauvegarde abîmée.') {
+              erreur = UI.messageErreur(e);
+            } else {
+              throw e;
+            }
+          }
+        }
+      } else {
+        lu = Sauvegarde.valider(brut);
+      }
     } catch (e) {
       await UI.informer({ titre: 'Fichier refusé', message: [UI.messageErreur(e), 'Rien n’a été modifié.'] });
       return;

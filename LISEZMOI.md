@@ -19,6 +19,13 @@ l'agenda du téléphone.
 Application de l'Omni-système, développée par **Ferrus Dantioch** avec l'aide de
 l'intelligence artificielle. Portfolio : https://ferrusdantioch.github.io/omni-systeme/
 
+### Nouveautés de la version 1.3.0
+
+- **Partage & urgence** : partage rapide en texte de la fiche de garde, bouton « Fiche animal perdu » depuis *Identité* et coordonnées facultatives d'un vétérinaire d'urgence / clinique 24h.
+- **Identité & impression** : champs facultatifs de passeport européen et d'assurance/mutuelle (masqués s'ils restent vides), choix de la période et annexe photo optionnelle dans le carnet de santé imprimable.
+- **Suivi quotidien & recherche** : badge des prises de médicaments du jour dès l'accueil (y compris pour vos traitements chroniques), filtre par animal, actions rapides et bilan annuel des frais dans *Rappels*, pastilles sur les onglets concernés, recherche par mot-clé, onglet *Chronologie* et fourchette de poids idéal sur la courbe.
+- **Sauvegarde** : chiffrement facultatif de vos sauvegardes par mot de passe directement dans le navigateur (`AES-GCM` + `PBKDF2`), tout en restant compatible avec vos sauvegardes classiques.
+
 ---
 
 ## Les fichiers

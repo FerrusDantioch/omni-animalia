@@ -36,6 +36,43 @@ const EcranVeto = {
     if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
     const animaux = await BD.tout('animaux');
     if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
+    const urgenceBrute = await BD.reglage('vetoUrgence', null);
+    if (tour !== this._tour || ($('#verrou') && !$('#verrou').hidden)) return;
+    let urgence = null;
+    try {
+      urgence = nettoyerVetoUrgence(urgenceBrute);
+    } catch (_) {
+      urgence = null;
+    }
+
+    const listeEl = $('#vetos-liste');
+    let zoneUrgence = $('#veto-urgence');
+    if (!zoneUrgence) {
+      zoneUrgence = el('section', { id: 'veto-urgence', class: 'veto-urgence' });
+      listeEl.before(zoneUrgence);
+    }
+    const fragUrgence = document.createDocumentFragment();
+    fragUrgence.append(el('p', { class: 'etiquette', text: 'Urgence / Clinique 24h' }));
+    if (urgence) {
+      const telUrgEl = urgence.telephone ? this.lienTelephone(urgence.telephone) : null;
+      fragUrgence.append(
+        el('h2', { text: urgence.nom || urgence.clinique || 'Vétérinaire d’urgence' }),
+        urgence.nom ? EcranAnimal.ligne('Clinique', urgence.clinique) : null,
+        telUrgEl ? el('p', { class: 'ligne' }, telUrgEl) : null,
+        EcranAnimal.ligne('Adresse', urgence.adresse),
+        EcranAnimal.ligne('Notes', urgence.notes),
+        el('div', { class: 'rangee-boutons' },
+          bouton('Modifier', () => this.formulaireUrgence(urgence), { classe: 'secondaire', icone: 'crayon' }),
+          bouton('Effacer', () => this.effacerUrgence(), { classe: 'secondaire danger-discret', icone: 'poubelle' }))
+      );
+    } else {
+      fragUrgence.append(
+        el('h2', { text: 'Vétérinaire d’urgence' }),
+        el('p', { class: 'discret', text: 'Aucun vétérinaire d’urgence ou clinique 24h/24 renseigné. Ajoute un numéro pour appeler en un geste.' }),
+        bouton('Configurer le vétérinaire d’urgence', () => this.formulaireUrgence(null), { classe: 'secondaire', icone: 'plus' })
+      );
+    }
+    vider(zoneUrgence).append(fragUrgence);
 
     const fragListe = document.createDocumentFragment();
     if (!vetos.length) {
@@ -58,8 +95,46 @@ const EcranVeto = {
     const fragActions = document.createDocumentFragment();
     fragActions.append(bouton('Ajouter un vétérinaire', () => this.formulaire(null), { classe: 'principal large', icone: 'plus' }));
 
-    vider($('#vetos-liste')).append(fragListe);
+    vider(listeEl).append(fragListe);
     vider($('#vetos-actions')).append(fragActions);
+  },
+
+  formulaireUrgence(urgence) {
+    Formulaire.ouvrir({
+      titre: urgence ? 'Modifier le vétérinaire d’urgence' : 'Vétérinaire d’urgence',
+      intro: 'Clinique 24h/24 ou service de garde à appeler en urgence.',
+      valeurs: urgence || {},
+      champs: [
+        { nom: 'nom', label: 'Nom', type: 'texte', long: 120, placeholder: 'exemple : Clinique de garde' },
+        { nom: 'clinique', label: 'Clinique ou service 24h', type: 'texte', long: 150 },
+        { nom: 'telephone', label: 'Téléphone d’urgence', type: 'tel', long: 30, autocomplete: 'tel' },
+        { nom: 'adresse', label: 'Adresse', type: 'zone', long: 500 },
+        { nom: 'notes', label: 'Notes', type: 'zone', long: 5000, aide: 'Horaires de garde, code d’accès, consignes…' }
+      ],
+      enregistrer: async (val) => {
+        await BD.definirReglage('vetoUrgence', val);
+        const reste = await BD.reglage('vetoUrgence', null);
+        return reste ? 'Vétérinaire d’urgence enregistré.' : 'Vétérinaire d’urgence retiré.';
+      }
+    });
+  },
+
+  async effacerUrgence() {
+    const ok = await UI.confirmer({
+      titre: 'Effacer le vétérinaire d’urgence ?',
+      message: 'Ces coordonnées ne seront plus affichées dans Vétérinaires ni sur les fiches de garde.',
+      oui: 'Effacer',
+      danger: true
+    });
+    if (!ok) return;
+    try {
+      await BD.definirReglage('vetoUrgence', null);
+      UI.annoncer('Vétérinaire d’urgence retiré.');
+      await this.afficher();
+      $('[data-vue="veterinaires"] h1').focus();
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
   },
 
   formulaire(v) {

@@ -390,5 +390,421 @@ lancer('Omni-Animalia — M2', async () => {
     verifier(res.remplacerOk, 'importer(..., "remplacer") efface contactGarde/derniereSauvegarde/unitePoids obsolètes tout en préservant motDePasse et debutSuivi');
   });
 
+  await section('5. Schéma animaux (poids idéal, passeport, assurance) et vetoUrgence', async () => {
+    const res = await p.evaluate(async () => {
+      await BD.toutEffacer();
+      await BD.definirReglage('avertissementVu', true);
+
+      function rejette(fn) {
+        try { fn(); return false; } catch (e) { return e; }
+      }
+
+      // 1. SCHEMAS.animaux : poidsIdealMin/Max, passeport, assurance*
+      const valide = nettoyerFiche('animaux', {
+        id: 'a_ext1',
+        nom: 'Pixel',
+        poidsIdealMin: 4200,
+        poidsIdealMax: 4800,
+        passeport: '  FR-123456  ',
+        assuranceCompagnie: '  Mutuelle Patte  ',
+        assuranceContrat: '  POL-999  ',
+        assuranceTelephone: '  +33 1 23 45 67 89  '
+      });
+      const egaux = nettoyerFiche('animaux', { id: 'a_eq', nom: 'Eq', poidsIdealMin: 4000, poidsIdealMax: 4000 });
+      const borneSeule = nettoyerFiche('animaux', { id: 'a_one', nom: 'One', poidsIdealMin: 3500 });
+
+      const minZero = rejette(() => nettoyerFiche('animaux', { id: 'a1', nom: 'X', poidsIdealMin: 0 }));
+      const maxNeg = rejette(() => nettoyerFiche('animaux', { id: 'a1', nom: 'X', poidsIdealMax: -10 }));
+      const minNaN = rejette(() => nettoyerFiche('animaux', { id: 'a1', nom: 'X', poidsIdealMin: NaN }));
+      const maxInf = rejette(() => nettoyerFiche('animaux', { id: 'a1', nom: 'X', poidsIdealMax: Infinity }));
+      const minStr = rejette(() => nettoyerFiche('animaux', { id: 'a1', nom: 'X', poidsIdealMin: '4000' }));
+      const ordreInv = rejette(() => nettoyerFiche('animaux', { id: 'a1', nom: 'X', poidsIdealMin: 5000, poidsIdealMax: 4000 }));
+      const telCtrl = rejette(() => nettoyerFiche('animaux', { id: 'a1', nom: 'X', assuranceTelephone: '01\n02' }));
+      const telDel = rejette(() => nettoyerFiche('animaux', { id: 'a1', nom: 'X', assuranceTelephone: '01\x7f02' }));
+
+      const tronque = nettoyerFiche('animaux', {
+        id: 'a_tr',
+        nom: 'Tr',
+        passeport: 'P'.repeat(100),
+        assuranceCompagnie: 'C'.repeat(150),
+        assuranceContrat: 'N'.repeat(100),
+        assuranceTelephone: '0'.repeat(60)
+      });
+
+      // 2. nettoyerVetoUrgence & BD.definirReglage('vetoUrgence', ...)
+      const vetoVide = nettoyerVetoUrgence({ nom: '   ', clinique: '', telephone: '  ', adresse: '', notes: '' });
+      const vetoPropre = nettoyerVetoUrgence({
+        nom: '  Dr Urgence  ',
+        clinique: '  Clinique 24h  ',
+        telephone: '  01 23 45 67 89  ',
+        adresse: '  10 rue de la Paix  ',
+        notes: '  Ouvert 24/7  '
+      });
+      const vetoTelInvalide = rejette(() => nettoyerVetoUrgence({ nom: 'Dr', telephone: 'abc' }));
+      const vetoTelCourt = rejette(() => nettoyerVetoUrgence({ telephone: '12' }));
+      const vetoTelCtrl = rejette(() => nettoyerVetoUrgence({ telephone: '01\n23 45' }));
+      const vetoTab = rejette(() => nettoyerVetoUrgence([]));
+      const vetoChampNum = rejette(() => nettoyerVetoUrgence({ nom: 123 }));
+
+      await BD.definirReglage('vetoUrgence', {
+        nom: '  Clinique Nuit  ',
+        telephone: '01 40 00 00 00'
+      });
+      const regLu = await BD.reglage('vetoUrgence', null);
+
+      let regRejet = false;
+      try { await BD.definirReglage('vetoUrgence', { telephone: 'invalide' }); } catch (e) { regRejet = !!(e && e.lisible); }
+      const regIntactApresRejet = await BD.reglage('vetoUrgence', null);
+
+      // Export & import vetoUrgence
+      const prepAvecVeto = await Sauvegarde.preparer();
+      const valAvecVeto = Sauvegarde.valider(JSON.parse(JSON.stringify(prepAvecVeto)));
+
+      // Remplacer sans vetoUrgence efface l'ancien réglage
+      const sansVeto = JSON.parse(JSON.stringify(prepAvecVeto));
+      delete sansVeto.reglages.vetoUrgence;
+      await Sauvegarde.importer(Sauvegarde.valider(sansVeto), 'remplacer');
+      const vetoEffaceRemplacer = await BD.reglage('vetoUrgence', null);
+
+      // Importer avec vetoUrgence le restaure
+      await Sauvegarde.importer(valAvecVeto, 'remplacer');
+      const vetoRestaure = await BD.reglage('vetoUrgence', null);
+
+      // Sauvegarde corrompue sur vetoUrgence rejetée
+      const corrVeto = JSON.parse(JSON.stringify(prepAvecVeto));
+      corrVeto.reglages.vetoUrgence = { telephone: 'bad' };
+      const vetoSvgRejet = rejette(() => Sauvegarde.valider(corrVeto));
+
+      // Effacement via objet vide dans definirReglage
+      await BD.definirReglage('vetoUrgence', { nom: '', telephone: '' });
+      const vetoSupprVide = await BD.reglage('vetoUrgence', null);
+
+      return {
+        valideOk: valide.poidsIdealMin === 4200 && valide.poidsIdealMax === 4800 &&
+          valide.passeport === 'FR-123456' && valide.assuranceCompagnie === 'Mutuelle Patte' &&
+          valide.assuranceContrat === 'POL-999' && valide.assuranceTelephone === '+33 1 23 45 67 89',
+        egauxOk: egaux.poidsIdealMin === 4000 && egaux.poidsIdealMax === 4000,
+        borneSeuleOk: borneSeule.poidsIdealMin === 3500 && borneSeule.poidsIdealMax === undefined,
+        rejetsAnimauxOk: !!(minZero && maxNeg && minNaN && maxInf && minStr && ordreInv && telCtrl && telDel),
+        tronqueOk: tronque.passeport.length === 80 && tronque.assuranceCompagnie.length === 120 &&
+          tronque.assuranceContrat.length === 80 && tronque.assuranceTelephone.length === 30,
+        vetoVideNull: vetoVide === null,
+        vetoPropreOk: vetoPropre && vetoPropre.nom === 'Dr Urgence' && vetoPropre.clinique === 'Clinique 24h' &&
+          vetoPropre.telephone === '01 23 45 67 89' && vetoPropre.adresse === '10 rue de la Paix' && vetoPropre.notes === 'Ouvert 24/7',
+        vetoRejetsOk: !!(vetoTelInvalide && vetoTelInvalide.lisible && vetoTelCourt && vetoTelCtrl && vetoTab && vetoChampNum),
+        regLuOk: regLu && regLu.nom === 'Clinique Nuit' && regLu.telephone === '01 40 00 00 00' && regLu.clinique === '',
+        regRejetOk: regRejet && regIntactApresRejet && regIntactApresRejet.nom === 'Clinique Nuit',
+        prepVetoOk: prepAvecVeto.reglages.vetoUrgence && prepAvecVeto.reglages.vetoUrgence.nom === 'Clinique Nuit',
+        valVetoOk: valAvecVeto.reglages.vetoUrgence && valAvecVeto.reglages.vetoUrgence.telephone === '01 40 00 00 00',
+        vetoEffaceRemplacerOk: vetoEffaceRemplacer === null,
+        vetoRestaureOk: vetoRestaure && vetoRestaure.nom === 'Clinique Nuit',
+        vetoSvgRejetOk: !!(vetoSvgRejet && vetoSvgRejet.lisible),
+        vetoSupprVideOk: vetoSupprVide === null
+      };
+    });
+
+    verifier(res.valideOk && res.egauxOk && res.borneSeuleOk, 'SCHEMAS.animaux conserve poids idéal, passeport et assurance');
+    verifier(res.rejetsAnimauxOk, 'nettoyerFiche rejette poidsIdeal <= 0 / NaN / min > max et contrôles dans assuranceTelephone');
+    verifier(res.tronqueOk, 'nettoyerFiche borne passeport (80), assuranceCompagnie (120), contrat (80) et téléphone (30)');
+    verifier(res.vetoVideNull && res.vetoPropreOk && res.vetoRejetsOk, 'nettoyerVetoUrgence normalise, retourne null si vide et rejette données invalides');
+    verifier(res.regLuOk && res.regRejetOk, 'BD.definirReglage("vetoUrgence") assainit et protège contre les écritures invalides');
+    verifier(res.prepVetoOk && res.valVetoOk && res.vetoEffaceRemplacerOk && res.vetoRestaureOk && res.vetoSvgRejetOk && res.vetoSupprVideOk,
+      'Sauvegarde exporte, valide, restaure et nettoie vetoUrgence');
+  });
+
+  await section('6. Sauvegarde chiffrée (R2 : Web Crypto PBKDF2 + AES-GCM et UI Réglages)', async () => {
+    const res = await p.evaluate(async () => {
+      await BD.toutEffacer();
+      await BD.definirReglage('avertissementVu', true);
+      const animal = await BD.enregistrer('animaux', {
+        nom: 'ChiffreTest',
+        espece: 'Chat',
+        notes: 'A'.repeat(10000)
+      });
+
+      const clair = await Sauvegarde.preparer();
+      const grosPayload = { ...clair, grosChampTest: 'Z'.repeat(120000) };
+      const estChiffreeClair = Sauvegarde.estChiffree(clair);
+      const estChiffreeNull = Sauvegarde.estChiffree(null);
+      const estChiffreeArr = Sauvegarde.estChiffree([]);
+
+      const env1 = await Sauvegarde.chiffrer(grosPayload, 'MonMotDePasse!2026');
+      const env2 = await Sauvegarde.chiffrer(grosPayload, 'MonMotDePasse!2026');
+
+      const champsEnvOk = Sauvegarde.estChiffree(env1) &&
+        env1.format === Sauvegarde.FORMAT &&
+        env1.chiffre === true &&
+        env1.versionChiffrement === 1 &&
+        env1.kdf === 'PBKDF2-SHA256' &&
+        env1.iterations === 210000 &&
+        env1.algo === 'AES-GCM' &&
+        typeof env1.sel === 'string' && env1.sel.length > 0 &&
+        typeof env1.iv === 'string' && env1.iv.length > 0 &&
+        typeof env1.donnees === 'string' && env1.donnees.length > 100000;
+
+      const aleaDistinctOk = env1.sel !== env2.sel && env1.iv !== env2.iv && env1.donnees !== env2.donnees;
+
+      const dech = await Sauvegarde.dechiffrer(env1, 'MonMotDePasse!2026');
+      const roundTripOk = !!(dech && dech.donnees && dech.donnees.animaux &&
+        dech.donnees.animaux.length === 1 && dech.donnees.animaux[0].notes.length === 10000 &&
+        dech.grosChampTest && dech.grosChampTest.length === 120000);
+
+      async function capterErreur(fn) {
+        try { await fn(); return ''; } catch (e) { return e && e.message ? e.message : 'err'; }
+      }
+
+      const errMauvaisMdp = await capterErreur(() => Sauvegarde.dechiffrer(env1, 'MauvaisMotDePasse'));
+      const envTamperData = { ...env1, donnees: 'AA' + env1.donnees.slice(2) };
+      const errTamperData = await capterErreur(() => Sauvegarde.dechiffrer(envTamperData, 'MonMotDePasse!2026'));
+      const envTamperIv = { ...env1, iv: 'AA' + env1.iv.slice(2) };
+      const errTamperIv = await capterErreur(() => Sauvegarde.dechiffrer(envTamperIv, 'MonMotDePasse!2026'));
+      const errIterBas = await capterErreur(() => Sauvegarde.dechiffrer({ ...env1, iterations: 5000 }, 'MonMotDePasse!2026'));
+      const errIterHaut = await capterErreur(() => Sauvegarde.dechiffrer({ ...env1, iterations: 3000000 }, 'MonMotDePasse!2026'));
+      const errVerFutur = await capterErreur(() => Sauvegarde.dechiffrer({ ...env1, versionChiffrement: 2 }, 'MonMotDePasse!2026'));
+      const errKdf = await capterErreur(() => Sauvegarde.dechiffrer({ ...env1, kdf: 'MD5' }, 'MonMotDePasse!2026'));
+
+      // Enveloppe chiffrée imbriquée refusée par valider()
+      const envImbriquee = await Sauvegarde.chiffrer(env1, 'PassImbrique1');
+      const dechImbrique = await Sauvegarde.dechiffrer(envImbriquee, 'PassImbrique1');
+      const errImbriqueValider = await capterErreur(() => Sauvegarde.valider(dechImbrique));
+
+      // lireFichier avec fichier chiffré et fichier non chiffré
+      const fChiffre = await Sauvegarde.fichier(false, 'FichierSecret1');
+      const fClair = await Sauvegarde.fichier(false);
+      const errSansMdp = await capterErreur(() => Sauvegarde.lireFichier(fChiffre));
+      const luChiffre = await Sauvegarde.lireFichier(fChiffre, 'FichierSecret1');
+      const luClair = await Sauvegarde.lireFichier(fClair);
+
+      // UI Réglages : 8 blocs, case décochée par défaut
+      await Nav.remplacer({ vue: 'reglages' });
+      const blocs = document.querySelectorAll('#reglages-contenu .bloc').length;
+      const caseEl = document.querySelector('#sauvegarde-chiffree');
+      const caseDecocheeDefaut = !!(caseEl && caseEl.type === 'checkbox' && !caseEl.checked);
+      const boutonsPresents = !!(document.querySelector('#bouton-sauvegarder') &&
+        document.querySelector('#bouton-restaurer') &&
+        document.querySelector('#fichier-import'));
+
+      // Export non chiffré quand case décochée (zéro modale supplémentaire)
+      const origPartagePossible = Partage.possible;
+      const origTelecharger = Partage.telecharger;
+      const fichiersTelecharges = [];
+      Partage.possible = () => false;
+      Partage.telecharger = (f) => { fichiersTelecharges.push(f); };
+      try {
+        await EcranReglages.sauvegarder();
+      } finally {
+        Partage.possible = origPartagePossible;
+        Partage.telecharger = origTelecharger;
+      }
+      const exportClairSansModale = fichiersTelecharges.length === 1 &&
+        !Sauvegarde.estChiffree(JSON.parse(await fichiersTelecharges[0].text()));
+
+      return {
+        animalId: animal.id,
+        estChiffreeClair, estChiffreeNull, estChiffreeArr,
+        champsEnvOk, aleaDistinctOk, roundTripOk,
+        errMauvaisMdp, errTamperData, errTamperIv,
+        errIterBas, errIterHaut, errVerFutur, errKdf, errImbriqueValider,
+        errSansMdp,
+        luChiffreOk: luChiffre && luChiffre.donnees.animaux.length === 1,
+        luClairOk: luClair && luClair.donnees.animaux.length === 1,
+        blocs, caseDecocheeDefaut, boutonsPresents, exportClairSansModale
+      };
+    });
+
+    verifier(!res.estChiffreeClair && !res.estChiffreeNull && !res.estChiffreeArr && res.champsEnvOk,
+      'enveloppe chiffrée conforme (PBKDF2-SHA256 210000, AES-GCM, sel/iv/donnees)');
+    verifier(res.aleaDistinctOk && res.roundTripOk, 'sel et IV aléatoires à chaque chiffrement et grand payload (>100 Ko) déchiffré');
+    verifier(res.errMauvaisMdp.includes('Mot de passe incorrect') &&
+      res.errTamperData.includes('Mot de passe incorrect') &&
+      res.errTamperIv.includes('Mot de passe incorrect'),
+      'mauvais mot de passe et données/IV altérés rejetés proprement');
+    verifier(res.errIterBas && res.errIterHaut && res.errVerFutur.includes('version plus récente') && res.errKdf && res.errImbriqueValider,
+      'paramètres KDF/version invalides et enveloppes imbriquées rejetés');
+    verifier(res.errSansMdp && res.luChiffreOk && res.luClairOk,
+      'Sauvegarde.lireFichier gère les fichiers chiffrés et reste 100 % compatible non chiffré');
+    verifier(res.blocs === 8 && res.caseDecocheeDefaut && res.boutonsPresents && res.exportClairSansModale,
+      'EcranReglages garde 8 blocs, case décochée par défaut et export clair direct');
+
+    // Flux UI complet : export chiffré via case cochée + restauration avec mauvais mot de passe puis bon mot de passe
+    const uiFlux = await (async () => {
+      await p.evaluate(() => {
+        window.__telechargesM1 = [];
+        window.__origPartagePossibleM1 = Partage.possible;
+        window.__origTelechargerM1 = Partage.telecharger;
+        Partage.possible = () => false;
+        Partage.telecharger = (f) => { window.__telechargesM1.push(f); };
+      });
+
+      await p.check('#sauvegarde-chiffree');
+      await p.click('#bouton-sauvegarder');
+      await p.waitForSelector('#dialogue[open] #dialogue-mdp-conf', { timeout: 5000 });
+
+      // Test erreur de confirmation différente
+      await p.fill('#dialogue-mdp', 'Secret2026!');
+      await p.fill('#dialogue-mdp-conf', 'Autre2026!');
+      await p.click('#dialogue[open] button[type="submit"]');
+      const errConfMsg = await p.textContent('#dialogue-mdp-erreur');
+
+      // Mot de passe concordant
+      await p.fill('#dialogue-mdp-conf', 'Secret2026!');
+      await p.click('#dialogue[open] button[type="submit"]');
+      await p.waitForSelector('#dialogue[open]', { state: 'detached', timeout: 5000 });
+      await p.waitForFunction(() => window.__telechargesM1.length === 1, { timeout: 10000 });
+
+      const envTexte = await p.evaluate(async () => {
+        Partage.possible = window.__origPartagePossibleM1;
+        Partage.telecharger = window.__origTelechargerM1;
+        return await window.__telechargesM1[0].text();
+      });
+      const envObj = JSON.parse(envTexte);
+
+      // Efface l'animal pour prouver que la restauration chiffrée le remet en base
+      await p.evaluate(async () => {
+        await BD.toutEffacer();
+        await BD.definirReglage('avertissementVu', true);
+        await Nav.remplacer({ vue: 'reglages' });
+      });
+
+      // Déclenche restaurer() sur le fichier chiffré
+      await p.evaluate((txt) => {
+        const f = new File([txt], 'sauvegarde-chiffree.json', { type: 'application/json' });
+        window.__restaurerPromesse = EcranReglages.restaurer(f);
+      }, envTexte);
+
+      await p.waitForSelector('#dialogue[open] #dialogue-mdp', { timeout: 5000 });
+      // Mauvais mot de passe -> réaffiche l'invite avec erreur
+      await p.fill('#dialogue-mdp', 'MauvaisMdp');
+      await p.click('#dialogue[open] button[type="submit"]');
+      await p.waitForFunction(() => {
+        const e = document.querySelector('#dialogue-mdp-erreur');
+        return e && !e.hidden && e.textContent.includes('Mot de passe incorrect');
+      }, { timeout: 10000 });
+      const errMauvaisUi = await p.textContent('#dialogue-mdp-erreur');
+
+      // Bon mot de passe -> passe à la fenêtre Fusionner / Remplacer
+      await p.fill('#dialogue-mdp', 'Secret2026!');
+      await p.click('#dialogue[open] button[type="submit"]');
+      await p.waitForFunction(() => {
+        const h2 = document.querySelector('#dialogue[open] h2');
+        return h2 && h2.textContent.includes('Restaurer cette sauvegarde');
+      }, { timeout: 10000 });
+      await p.locator('#dialogue[open] button', { hasText: 'Fusionner' }).click();
+      await p.evaluate(() => window.__restaurerPromesse);
+
+      const apresRestaurer = await p.evaluate(async () => {
+        const animaux = await BD.tout('animaux');
+        return { nb: animaux.length, nom: animaux[0] && animaux[0].nom };
+      });
+
+      // Annulation au mot de passe ne touche pas la base
+      await p.evaluate((txt) => {
+        const f = new File([txt], 'sauvegarde-chiffree.json', { type: 'application/json' });
+        window.__restaurerAnnul = EcranReglages.restaurer(f);
+      }, envTexte);
+      await p.waitForSelector('#dialogue[open] #dialogue-mdp', { timeout: 5000 });
+      await p.locator('#dialogue[open] button', { hasText: 'Annuler' }).click();
+      await p.evaluate(() => window.__restaurerAnnul);
+
+      return { envChiffre: envObj.chiffre === true, errConfMsg, errMauvaisUi, apresRestaurer };
+    })();
+
+    verifier(uiFlux.envChiffre && uiFlux.errConfMsg.includes('identiques'),
+      'export chiffré UI vérifie la confirmation et produit un fichier chiffré');
+    verifier(uiFlux.errMauvaisUi.includes('Mot de passe incorrect') &&
+      uiFlux.apresRestaurer.nb === 1 && uiFlux.apresRestaurer.nom === 'ChiffreTest',
+      'restauration chiffrée UI gère le mauvais mot de passe puis restaure avec le bon');
+  });
+
+  await section('7. Partage.texte (R1) et UI.copier / UI.demanderMotDePasse', async () => {
+    const res = await p.evaluate(async () => {
+      const origShare = navigator.share;
+      const origCanShare = navigator.canShare;
+      const origCopier = UI.copier;
+
+      let appelsShare = [];
+      let appelsCopier = 0;
+
+      // 1. navigator.share réussit
+      navigator.canShare = () => true;
+      navigator.share = async (data) => { appelsShare.push(data); };
+      UI.copier = async (t) => { appelsCopier++; return true; };
+      const rPartage = await Partage.texte('Fiche', 'Contenu test');
+
+      // 2. navigator.share AbortError -> 'annule' sans copier
+      navigator.share = async () => {
+        const e = new Error('Annulé');
+        e.name = 'AbortError';
+        throw e;
+      };
+      const rAnnule = await Partage.texte('Fiche', 'Contenu test');
+
+      // 3. Sans navigator.share -> fallback UI.copier + UI.annoncer concis
+      navigator.share = undefined;
+      navigator.canShare = undefined;
+      UI.copier = origCopier;
+      const origClip = navigator.clipboard;
+      let copieClip = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async (t) => { copieClip = t; } }
+      });
+      const rCopie = await Partage.texte('Fiche', 'Ligne 1\nLigne 2');
+      const copieClipPartage = copieClip;
+      const annonceCopie = document.querySelector('#annonce').textContent;
+
+      // 4. UI.copier retourne true / false
+      const boolOk = await UI.copier('ABC');
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async () => { throw new Error('denied'); } }
+      });
+      const origExec = document.execCommand;
+      document.execCommand = () => false;
+      const boolEchec = await UI.copier('ABC');
+      const rErreurPartage = await Partage.texte('Fiche', 'Texte');
+
+      // 5. Chaînage UI.demanderMotDePasse -> UI.choisir résout null sans bloquer
+      const pMdp = UI.demanderMotDePasse({ titre: 'Mdp', message: 'Test' });
+      const pChoix = UI.choisir({ titre: 'Suite', choix: [{ valeur: 'ok', texte: 'OK' }] });
+      document.querySelector('#dialogue button').click();
+      const [resMdp, resChoix] = await Promise.all([pMdp, pChoix]);
+
+      // Rétablissement
+      document.execCommand = origExec;
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: origClip });
+      navigator.share = origShare;
+      navigator.canShare = origCanShare;
+      UI.copier = origCopier;
+
+      return {
+        rPartage,
+        shareTitre: appelsShare[0] && appelsShare[0].title,
+        shareTexte: appelsShare[0] && appelsShare[0].text,
+        rAnnule,
+        appelsCopier,
+        rCopie,
+        copieClip: copieClipPartage,
+        annonceCopie,
+        boolOk,
+        boolEchec,
+        rErreurPartage,
+        resMdp,
+        resChoix
+      };
+    });
+
+    verifier(res.rPartage === 'partage' && res.shareTitre === 'Fiche' && res.shareTexte === 'Contenu test',
+      'Partage.texte utilise navigator.share({ title, text }) quand disponible');
+    verifier(res.rAnnule === 'annule' && res.appelsCopier === 0,
+      'Partage.texte ignore AbortError sans copier dans le presse-papiers');
+    verifier(res.rCopie === 'copie' && res.copieClip === 'Ligne 1\nLigne 2' && res.annonceCopie === 'Texte copié dans le presse-papiers.',
+      'Partage.texte se replie sur UI.copier et affiche une annonce concise', { rCopie: res.rCopie, copieClip: res.copieClip, annonceCopie: res.annonceCopie });
+    verifier(res.boolOk === true && res.boolEchec === false && res.rErreurPartage === 'erreur',
+      'UI.copier renvoie true/false et Partage.texte signale erreur en cas d’échec');
+    verifier(res.resMdp === null && res.resChoix === 'ok',
+      'UI.demanderMotDePasse s’intègre avec _fermerDialogue sans casser UI.choisir');
+  });
+
   await ctx.close();
 });

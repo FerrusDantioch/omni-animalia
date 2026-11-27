@@ -22,9 +22,11 @@ const Graphique = {
   },
 
   /* Fabrique le dessin de la courbe.
-     pesees : [{ date, grammes }] (dans n'importe quel ordre)
-     unite  : 'kg' ou 'g' */
-  courbePoids(pesees, unite) {
+     pesees     : [{ date, grammes }] (dans n'importe quel ordre)
+     unite      : 'kg' ou 'g'
+     fourchette : facultatif, { minGrammes, maxGrammes } pour tracer la bande de poids idéal */
+  courbePoids(pesees, unite, fourchette) {
+    const u = unite === 'g' ? 'g' : 'kg';
     const ns = 'http://www.w3.org/2000/svg';
     const points = (pesees || [])
       .filter((p) => p && Dates.estValide(p.date) && typeof p.grammes === 'number' && Number.isFinite(p.grammes) && p.grammes >= 0)
@@ -33,18 +35,31 @@ const Graphique = {
 
     if (points.length === 0) return null;
 
-    const valeurs = points.map((p) => this.convertir(p.grammes, unite));
+    let fMin = null, fMax = null;
+    if (fourchette && typeof fourchette === 'object' && !Array.isArray(fourchette) &&
+        typeof fourchette.minGrammes === 'number' && Number.isFinite(fourchette.minGrammes) &&
+        typeof fourchette.maxGrammes === 'number' && Number.isFinite(fourchette.maxGrammes) &&
+        fourchette.minGrammes > 0 && fourchette.maxGrammes >= fourchette.minGrammes) {
+      fMin = this.convertir(fourchette.minGrammes, u);
+      fMax = this.convertir(fourchette.maxGrammes, u);
+    }
+
+    const valeurs = points.map((p) => this.convertir(p.grammes, u));
     let min = Math.min(...valeurs);
     let max = Math.max(...valeurs);
+    if (fMin !== null) {
+      min = Math.min(min, fMin);
+      max = Math.max(max, fMax);
+    }
     // Un peu d'air en haut et en bas ; si tous les poids sont égaux, on écarte
-    const ecart = max - min || Math.max(Math.abs(max) * 0.1, unite === 'g' ? 10 : 0.5);
+    const ecart = max - min || Math.max(Math.abs(max) * 0.1, u === 'g' ? 10 : 0.5);
     min = Math.max(0, min - ecart * 0.15);
     max = max + ecart * 0.15;
-    if (max <= min) max = min + (unite === 'g' ? 1 : 0.1);
+    if (max <= min) max = min + (u === 'g' ? 1 : 0.1);
 
     const pas = (max - min) / 3;
     const reperes = [0, 1, 2, 3].map((i) => min + ((max - min) * i) / 3);
-    let decimales = unite === 'g' ? 0 : (max - min < 2 ? 2 : 1);
+    let decimales = u === 'g' ? 0 : (max - min < 2 ? 2 : 1);
     while (decimales < 6) {
       if (pas >= Math.pow(10, -decimales) && new Set(reperes.map((v) => UI.nombre(v, decimales))).size === 4) break;
       decimales++;
@@ -80,13 +95,32 @@ const Graphique = {
     };
     const y = (v) => marge.haut + (1 - (v - min) / (max - min)) * hauteurUtile;
 
+    // Bande de poids idéal (placée sous les repères, la courbe et les points)
+    if (fMin !== null) {
+      const yHaut = y(fMax);
+      const yBas = y(fMin);
+      let rectY = yHaut;
+      let rectH = yBas - yHaut;
+      if (rectH < 2) {
+        rectY = Math.max(marge.haut, Math.min(marge.haut + hauteurUtile - 2, yHaut - 1));
+        rectH = 2;
+      }
+      ajouter('rect', {
+        x: marge.gauche,
+        y: rectY.toFixed(1),
+        width: largeurUtile,
+        height: rectH.toFixed(1),
+        class: 'bande-ideale'
+      });
+    }
+
     // Lignes de repère horizontales (4 niveaux) avec leurs valeurs
     for (let i = 0; i <= 3; i++) {
       const yy = y(reperes[i]);
       ajouter('line', { x1: marge.gauche, x2: L - marge.droite, y1: yy, y2: yy, class: 'repere' });
       ajouter('text', { x: marge.gauche - 6, y: yy + 4, 'text-anchor': 'end', class: 'legende' }, libelles[i]);
     }
-    ajouter('text', { x: 4, y: 12, class: 'legende' }, unite);
+    ajouter('text', { x: 4, y: 12, class: 'legende' }, u);
 
     // Dates du premier et du dernier point, sous le dessin
     const court = (d) => Dates.fr(d).slice(0, 6) + Dates.fr(d).slice(8);    // jj/mm/aa
@@ -107,11 +141,17 @@ const Graphique = {
     points.forEach((p, i) => ajouter('circle', { cx: xPos(p, i).toFixed(1), cy: y(valeurs[i]).toFixed(1), r: 4.5, class: 'point' }));
 
     // Description pour les lecteurs d'écran
-    const debut = UI.nombre(valeurs[0]) + ' ' + unite + ' le ' + Dates.fr(premier);
-    const fin = UI.nombre(valeurs[valeurs.length - 1]) + ' ' + unite + ' le ' + Dates.fr(dernier);
-    svg.setAttribute('aria-label', points.length === 1
+    const decAria = u === 'kg' ? 4 : 1;
+    const debut = UI.nombre(valeurs[0], decAria) + ' ' + u + ' le ' + Dates.fr(premier);
+    const fin = UI.nombre(valeurs[valeurs.length - 1], decAria) + ' ' + u + ' le ' + Dates.fr(dernier);
+    const infoFourchette = fMin !== null
+      ? (fMin === fMax
+        ? ' Poids idéal : ' + UI.nombre(fMin, decAria) + ' ' + u + '.'
+        : ' Fourchette de poids idéal : de ' + UI.nombre(fMin, decAria) + ' à ' + UI.nombre(fMax, decAria) + ' ' + u + '.')
+      : '';
+    svg.setAttribute('aria-label', (points.length === 1
       ? 'Courbe de poids : une seule pesée, ' + debut + '.'
-      : 'Courbe de poids, ' + points.length + ' pesées : de ' + debut + ' à ' + fin + '.');
+      : 'Courbe de poids, ' + points.length + ' pesées : de ' + debut + ' à ' + fin + '.') + infoFourchette);
     return svg;
   }
 };

@@ -84,22 +84,73 @@ const EcranSante = {
   },
 
   /* ---------- Poids ---------- */
+  fourchettePoids(a) {
+    if (!a || typeof a !== 'object') return null;
+    const min = a.poidsIdealMin;
+    const max = a.poidsIdealMax;
+    if (typeof min === 'number' && Number.isFinite(min) && min > 0 &&
+        typeof max === 'number' && Number.isFinite(max) && max >= min) {
+      return { minGrammes: min, maxGrammes: max };
+    }
+    return null;
+  },
+
   async poids(zone, a) {
     const unite = a.unitePoids === 'g' ? 'g' : 'kg';
+    const decimales = unite === 'kg' ? 4 : 1;
     const pesees = this.recentsDabord(await BD.parAnimal('pesees', a.id), 'date');
     EcranAnimal.entete(zone, 'Poids', 'Ajouter une pesée', () => this.formulairePesee(a, null));
-    if (!pesees.length) return EcranAnimal.message(zone, 'Aucune pesée enregistrée.');
 
     const conv = (g) => Graphique.convertir(g, unite);
+    const fourchette = this.fourchettePoids(a);
+    const aMinSeul = typeof a.poidsIdealMin === 'number' && Number.isFinite(a.poidsIdealMin) && a.poidsIdealMin > 0;
+    const aMaxSeul = typeof a.poidsIdealMax === 'number' && Number.isFinite(a.poidsIdealMax) && a.poidsIdealMax > 0;
+    const partielle = !fourchette && (aMinSeul || aMaxSeul);
+
+    if (!a.archive || fourchette || partielle) {
+      let corpsFourchette;
+      if (fourchette) {
+        const texteFourchette = fourchette.minGrammes === fourchette.maxGrammes
+          ? 'Poids idéal visé : ' + UI.nombre(conv(fourchette.minGrammes), decimales) + ' ' + unite
+          : 'De ' + UI.nombre(conv(fourchette.minGrammes), decimales) + ' à ' + UI.nombre(conv(fourchette.maxGrammes), decimales) + ' ' + unite;
+        corpsFourchette = el('p', { class: 'ligne' }, el('strong', { class: 'mono', text: texteFourchette }));
+      } else if (partielle) {
+        const borne = aMinSeul
+          ? 'Minimal : ' + UI.nombre(conv(a.poidsIdealMin), decimales) + ' ' + unite
+          : 'Maximal : ' + UI.nombre(conv(a.poidsIdealMax), decimales) + ' ' + unite;
+        corpsFourchette = el('p', { class: 'ligne discret', text: borne + ' (indique les deux bornes pour afficher la bande sur la courbe).' });
+      } else {
+        corpsFourchette = el('p', { class: 'discret', text: 'Aucune fourchette définie.' });
+      }
+      zone.append(el('div', { class: 'encart fourchette-poids' },
+        el('p', { class: 'etiquette', text: 'Poids idéal (facultatif)' }),
+        corpsFourchette,
+        !a.archive ? el('div', { class: 'rangee-boutons' },
+          bouton(fourchette || partielle ? 'Modifier le poids idéal' : 'Définir le poids idéal',
+            () => this.formulairePoidsIdeal(a),
+            { classe: 'secondaire', icone: fourchette || partielle ? 'crayon' : 'plus' }),
+          (fourchette || partielle)
+            ? bouton('Effacer le poids idéal', () => this.effacerPoidsIdeal(a), { classe: 'secondaire danger-discret', icone: 'poubelle' })
+            : null) : null));
+    }
+
+    if (!pesees.length) return EcranAnimal.message(zone, 'Aucune pesée enregistrée.');
+
     const derniere = pesees[0];
     zone.append(el('p', { class: 'chiffre-cle' },
       el('span', { class: 'discret', text: 'Dernier poids : ' }),
       el('strong', { class: 'mono', text: UI.nombre(conv(derniere.grammes)) + ' ' + unite }),
       el('span', { class: 'discret', text: ' le ' + Dates.fr(derniere.date) })));
 
-    const dessin = Graphique.courbePoids(pesees, unite);
+    const dessin = Graphique.courbePoids(pesees, unite, fourchette);
+    const legendeBase = pesees.length > 1 ? 'Évolution du poids (' + unite + ')' : 'Ajoute une deuxième pesée pour voir une courbe.';
+    const legendeFourchette = fourchette
+      ? (fourchette.minGrammes === fourchette.maxGrammes
+        ? ' Bande : poids idéal ' + UI.nombre(conv(fourchette.minGrammes), decimales) + ' ' + unite + '.'
+        : ' Bande : poids idéal de ' + UI.nombre(conv(fourchette.minGrammes), decimales) + ' à ' + UI.nombre(conv(fourchette.maxGrammes), decimales) + ' ' + unite + '.')
+      : '';
     if (dessin) zone.append(el('figure', { class: 'carte figure-graphique' }, dessin,
-      el('figcaption', { class: 'aide', text: pesees.length > 1 ? 'Évolution du poids (' + unite + ')' : 'Ajoute une deuxième pesée pour voir une courbe.' })));
+      el('figcaption', { class: 'aide', text: legendeBase + legendeFourchette })));
 
     zone.append(el('h3', { class: 'sous-titre', text: 'Historique des pesées' }));
     pesees.forEach((p, i) => {
@@ -108,7 +159,7 @@ const EcranSante = {
       if (precedente) {
         const diff = conv(p.grammes) - conv(precedente.grammes);
         const arrondi = Math.round(diff * 1000) / 1000;
-        const texte = arrondi === 0 ? 'inchangé' : (arrondi > 0 ? '+' : '−') + UI.nombre(Math.abs(arrondi)) + ' ' + unite;
+        const texte = arrondi === 0 ? 'inchangé' : (arrondi > 0 ? '+' : '−') + UI.nombre(Math.abs(arrondi), decimales) + ' ' + unite;
         variation = EcranAnimal.ligne('Variation', texte + ' depuis le ' + Dates.fr(precedente.date));
       }
       zone.append(EcranAnimal.carteFiche({
@@ -140,6 +191,90 @@ const EcranSante = {
         return 'Pesée enregistrée.';
       }
     });
+  },
+
+  formulairePoidsIdeal(a) {
+    if (!a || !a.id || a.archive) return;
+    const unite = a.unitePoids === 'g' ? 'g' : 'kg';
+    const max = unite === 'kg' ? 3000 : 3000000;
+    const versGrammes = (val) => unite === 'kg' ? Math.round(val * 1000 * 10) / 10 : Math.round(val * 10) / 10;
+    const valeurs = {
+      poidsIdealMin: typeof a.poidsIdealMin === 'number' && Number.isFinite(a.poidsIdealMin) && a.poidsIdealMin > 0
+        ? Graphique.convertir(a.poidsIdealMin, unite) : '',
+      poidsIdealMax: typeof a.poidsIdealMax === 'number' && Number.isFinite(a.poidsIdealMax) && a.poidsIdealMax > 0
+        ? Graphique.convertir(a.poidsIdealMax, unite) : ''
+    };
+    Formulaire.ouvrir({
+      titre: 'Fourchette de poids idéal — ' + (a.nom || ''),
+      intro: 'Facultatif : affiche une bande légère sur la courbe de poids.',
+      valeurs,
+      champs: [
+        { nom: 'poidsIdealMin', label: 'Poids idéal minimal', type: 'nombre', positif: true, unite, max,
+          aide: unite === 'kg' ? 'En kilogrammes. Exemple : 4,2' : 'En grammes. Exemple : 800' },
+        { nom: 'poidsIdealMax', label: 'Poids idéal maximal', type: 'nombre', positif: true, unite, max,
+          aide: 'Laisse les deux champs vides pour retirer la fourchette.' }
+      ],
+      valider: (v) => {
+        const e = {};
+        const aMin = typeof v.poidsIdealMin === 'number' && Number.isFinite(v.poidsIdealMin);
+        const aMax = typeof v.poidsIdealMax === 'number' && Number.isFinite(v.poidsIdealMax);
+        const videMin = v.poidsIdealMin === null;
+        const videMax = v.poidsIdealMax === null;
+        if (aMin && videMax) e.poidsIdealMax = 'Indique aussi le poids maximal (ou laisse les deux champs vides).';
+        if (aMax && videMin) e.poidsIdealMin = 'Indique aussi le poids minimal (ou laisse les deux champs vides).';
+        if (aMin && versGrammes(v.poidsIdealMin) <= 0) e.poidsIdealMin = 'Ce poids est trop petit.';
+        if (aMax && versGrammes(v.poidsIdealMax) <= 0) e.poidsIdealMax = 'Ce poids est trop petit.';
+        if (aMin && aMax && v.poidsIdealMax < v.poidsIdealMin) {
+          e.poidsIdealMax = 'Le poids maximal doit être supérieur ou égal au poids minimal.';
+        }
+        return e;
+      },
+      enregistrer: async (v) => {
+        const frais = await BD.lire('animaux', a.id);
+        if (!frais) throw BD.erreur('Cet animal n’existe plus.');
+        if (frais.archive) throw BD.erreur('Impossible de modifier un animal archivé.');
+        const fiche = { ...frais };
+        if (v.poidsIdealMin === null && v.poidsIdealMax === null) {
+          delete fiche.poidsIdealMin;
+          delete fiche.poidsIdealMax;
+          await BD.enregistrer('animaux', fiche);
+          return 'Fourchette de poids idéal retirée.';
+        }
+        fiche.poidsIdealMin = versGrammes(v.poidsIdealMin);
+        fiche.poidsIdealMax = versGrammes(v.poidsIdealMax);
+        await BD.enregistrer('animaux', fiche);
+        return 'Fourchette de poids idéal enregistrée.';
+      }
+    });
+  },
+
+  async effacerPoidsIdeal(a) {
+    if (!a || !a.id || a.archive) return;
+    const ok = await UI.confirmer({
+      titre: 'Effacer le poids idéal ?',
+      message: 'La bande de poids idéal sera retirée de la courbe.',
+      oui: 'Effacer', danger: true
+    });
+    if (!ok) return;
+    try {
+      const frais = await BD.lire('animaux', a.id);
+      if (!frais) {
+        UI.annoncer('Cet animal n’existe plus.', 'erreur');
+        await Nav.remplacer({ vue: 'accueil' });
+        return;
+      }
+      if (frais.archive) return;
+      const fiche = { ...frais };
+      delete fiche.poidsIdealMin;
+      delete fiche.poidsIdealMax;
+      await BD.enregistrer('animaux', fiche);
+      UI.annoncer('Fourchette de poids idéal retirée.');
+      if (EcranAnimal.animal && EcranAnimal.animal.id === a.id) {
+        await EcranAnimal.rafraichir();
+      }
+    } catch (e) {
+      UI.annoncer(UI.messageErreur(e), 'erreur');
+    }
   },
 
   /* ---------- Vaccins ---------- */
