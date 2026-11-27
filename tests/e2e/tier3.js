@@ -41,6 +41,7 @@ const {
   wipeAllData,
   unfoldIcs,
   captureWindowOpen,
+  withPrintStub,
   probePrintView,
   triggerBackgroundRelock,
   openGarde,
@@ -240,15 +241,18 @@ const tests = [
       const savedHash = await page.evaluate(() => location.hash);
 
       // Populate #carnet without firing afterprint yet
-      await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
-      await page.locator('#carnet .carnet-entete').waitFor({ state: 'attached' });
-      assert((await page.locator('#carnet').evaluate((el) => el.children.length)) > 0, '#carnet populated before lock');
+      await withPrintStub(page, async ({ getPrintCallCount }) => {
+        await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
+        await page.locator('#carnet .carnet-entete').waitFor({ state: 'attached' });
+        assertEqual(await getPrintCallCount(), 1, 'window.print() must be called once');
+        assert((await page.locator('#carnet').evaluate((el) => el.children.length)) > 0, '#carnet populated before lock');
 
-      // Background visibilitychange relock must clear #carnet and hide #principal
-      await triggerBackgroundRelock(page, 305000);
-      assertEqual(await page.locator('#verrou').evaluate((el) => el.hidden), false);
-      assertEqual(await page.locator('#principal').evaluate((el) => el.hidden), true);
-      assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0, '#carnet cleared on lock');
+        // Background visibilitychange relock must clear #carnet and hide #principal
+        await triggerBackgroundRelock(page, 305000);
+        assertEqual(await page.locator('#verrou').evaluate((el) => el.hidden), false);
+        assertEqual(await page.locator('#principal').evaluate((el) => el.hidden), true);
+        assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0, '#carnet cleared on lock');
+      });
 
       // Hash / popstate change while locked must not bypass lock screen
       await page.evaluate(() => {

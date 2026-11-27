@@ -17,9 +17,20 @@ const {
   openPet,
   openAnimalSection,
   openGarde,
+  openArchives,
   submitGardeForm,
+  submitAnimalForm,
   loadDemoData,
   createPet,
+  createVet,
+  addWeighIn,
+  addVaccine,
+  addAntiparasitic,
+  addTreatment,
+  addAppointment,
+  addTask,
+  addNote,
+  activatePassword,
   submitForm,
   confirmDialog,
   uploadSamplePng,
@@ -27,134 +38,10 @@ const {
   captureDownload,
   isoDateOffset,
   frDate,
+  withPrintStub,
+  probePrintView,
+  waitForIdbSetting,
 } = require('./helpers');
-
-/* Helper: add a vet via UI */
-async function createVet(page, data) {
-  await goTab(page, 'veterinaires');
-  await page.locator('#vetos-actions').getByRole('button', { name: 'Ajouter un vétérinaire', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  if (data.nom !== undefined) await page.locator('#champ-nom').fill(data.nom);
-  if (data.clinique !== undefined) await page.locator('#champ-clinique').fill(data.clinique);
-  if (data.telephone !== undefined) await page.locator('#champ-telephone').fill(data.telephone);
-  if (data.adresse !== undefined) await page.locator('#champ-adresse').fill(data.adresse);
-  if (data.notes !== undefined) await page.locator('#champ-notes').fill(data.notes);
-  await submitForm(page);
-  await page.locator('.vue[data-vue="veterinaires"]:not([hidden])').waitFor({ state: 'visible' });
-}
-
-/* Helper: add weigh-in while on pet's Poids section */
-async function addWeighIn(page, { date, valeur, note } = {}) {
-  await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter une pesée', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  if (date !== undefined) await page.locator('#champ-date').fill(date);
-  if (valeur !== undefined) await page.locator('#champ-valeur').fill(String(valeur));
-  if (note !== undefined) await page.locator('#champ-note').fill(note);
-  await submitForm(page);
-  await page.locator('.vue[data-vue="animal"]:not([hidden])').waitFor({ state: 'visible' });
-}
-
-/* Helper: add vaccine while on pet's Vaccins section */
-async function addVaccine(page, { nom, date, rappel, veterinaire, lot, note } = {}) {
-  await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter un vaccin', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  if (nom !== undefined) await page.locator('#champ-nom').fill(nom);
-  if (date !== undefined) await page.locator('#champ-date').fill(date);
-  if (rappel !== undefined) await page.locator('#champ-rappel').fill(rappel);
-  if (veterinaire !== undefined) await page.locator('#champ-veterinaire').fill(veterinaire);
-  if (lot !== undefined) await page.locator('#champ-lot').fill(lot);
-  if (note !== undefined) await page.locator('#champ-note').fill(note);
-  await submitForm(page);
-  await page.locator('.vue[data-vue="animal"]:not([hidden])').waitFor({ state: 'visible' });
-}
-
-/* Helper: add antiparasitic while on pet's Antiparasitaires section */
-async function addAntiparasitic(page, { type, produit, date, prochaine, dose, note } = {}) {
-  await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter une prise', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  if (type !== undefined) await page.locator(`[data-champ="type"] input[type="radio"][value="${type}"]`).check();
-  if (produit !== undefined) await page.locator('#champ-produit').fill(produit);
-  if (date !== undefined) await page.locator('#champ-date').fill(date);
-  if (prochaine !== undefined) await page.locator('#champ-prochaine').fill(prochaine);
-  if (dose !== undefined) await page.locator('#champ-dose').fill(dose);
-  if (note !== undefined) await page.locator('#champ-note').fill(note);
-  await submitForm(page);
-  await page.locator('.vue[data-vue="animal"]:not([hidden])').waitFor({ state: 'visible' });
-}
-
-/* Helper: add treatment while on pet's Traitements section */
-async function addTreatment(page, { nom, dose, frequence, prisesParJour, debut, fin, statut, note } = {}) {
-  await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter un traitement', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  if (nom !== undefined) await page.locator('#champ-nom').fill(nom);
-  if (dose !== undefined) await page.locator('#champ-dose').fill(dose);
-  if (frequence !== undefined) await page.locator('#champ-frequence').fill(frequence);
-  if (prisesParJour !== undefined) await page.locator('#champ-prisesParJour').fill(String(prisesParJour));
-  if (debut !== undefined) await page.locator('#champ-debut').fill(debut);
-  if (fin !== undefined) await page.locator('#champ-fin').fill(fin);
-  if (statut !== undefined) await page.locator(`[data-champ="statut"] input[type="radio"][value="${statut}"]`).check();
-  if (note !== undefined) await page.locator('#champ-note').fill(note);
-  await submitForm(page);
-  await page.locator('.vue[data-vue="animal"]:not([hidden])').waitFor({ state: 'visible' });
-}
-
-/* Helper: add appointment while on pet's Rendez-vous section */
-async function addAppointment(page, { date, heure, motif, veterinaire, compteRendu, cout } = {}) {
-  await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter un rendez-vous', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  if (date !== undefined) await page.locator('#champ-date').fill(date);
-  if (heure !== undefined) await page.locator('#champ-heure').fill(heure);
-  if (motif !== undefined) await page.locator('#champ-motif').fill(motif);
-  if (veterinaire !== undefined) await page.locator('#champ-veterinaire').fill(veterinaire);
-  if (compteRendu !== undefined) await page.locator('#champ-compteRendu').fill(compteRendu);
-  if (cout !== undefined) await page.locator('#champ-cout').fill(String(cout));
-  await submitForm(page);
-  await page.locator('.vue[data-vue="animal"]:not([hidden])').waitFor({ state: 'visible' });
-}
-
-/* Helper: add task while on pet's À faire section */
-async function addTask(page, { titre, echeance, repete, recN, recUnite, note } = {}) {
-  await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter une tâche', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  if (titre !== undefined) await page.locator('#champ-titre').fill(titre);
-  if (echeance !== undefined) await page.locator('#champ-echeance').fill(echeance);
-  if (repete !== undefined) {
-    await page.locator(`[data-champ="repete"] input[type="radio"][value="${repete}"]`).check();
-  }
-  if (repete === 'oui') {
-    if (recN !== undefined) await page.locator('#champ-recN').fill(String(recN));
-    if (recUnite !== undefined) await page.locator('#champ-recUnite').selectOption(recUnite);
-  }
-  if (note !== undefined) await page.locator('#champ-note').fill(note);
-  await submitForm(page);
-  await page.locator('.vue[data-vue="animal"]:not([hidden])').waitFor({ state: 'visible' });
-}
-
-/* Helper: add health note while on pet's Notes de santé section */
-async function addNote(page, { date, categorie, texte, withDocument } = {}) {
-  await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter une note', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  if (date !== undefined) await page.locator('#champ-date').fill(date);
-  if (categorie !== undefined) await page.locator('#champ-categorie').selectOption(categorie);
-  if (texte !== undefined) await page.locator('#champ-texte').fill(texte);
-  if (withDocument) {
-    const fileInput = page.locator('[data-champ="pieces"] input[type="file"]:not([capture])');
-    await uploadSamplePng(page, fileInput, 'ordonnance.png', '[data-champ="pieces"] .aide', 'Document ajouté');
-  }
-  await submitForm(page);
-  await page.locator('.vue[data-vue="animal"]:not([hidden])').waitFor({ state: 'visible' });
-}
-
-/* Helper: set password lock from Réglages */
-async function activatePassword(page, password) {
-  await goTab(page, 'reglages');
-  await page.locator('#reglages-contenu').getByRole('button', { name: 'Activer un mot de passe', exact: true }).click();
-  await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
-  await page.locator('#champ-nouveau').fill(password);
-  await page.locator('#champ-confirmation').fill(password);
-  await submitForm(page);
-  await page.locator('.vue[data-vue="reglages"]:not([hidden])').waitFor({ state: 'visible' });
-}
 
 const tests = [
   /* =========================================================================
@@ -201,7 +88,19 @@ const tests = [
       await page.locator('#champ-dateSterilisation').fill(sterilDate);
       await uploadSamplePng(page, page.locator('[data-champ="photo"] input[type="file"]:not([capture])'), 'nala.png');
       await page.locator('#champ-notes').fill('Très joueuse');
-      await submitForm(page);
+      const prevAccueilChild = (await page.locator('#accueil-liste > *').count()) > 0
+        ? await page.locator('#accueil-liste > *').first().elementHandle().catch(() => null)
+        : null;
+      try {
+        await submitForm(page);
+        await page.locator('.vue[data-vue="accueil"]:not([hidden])').waitFor({ state: 'visible', timeout: 10000 });
+        if (prevAccueilChild) {
+          await page.waitForFunction((el) => !el.isConnected, prevAccueilChild, { timeout: 10000 });
+        }
+      } finally {
+        if (prevAccueilChild) await prevAccueilChild.dispose().catch(() => {});
+      }
+      await page.locator('#accueil-liste .carte-animal img.vignette').waitFor({ state: 'visible', timeout: 10000 });
 
       const thumbSrc = await page.locator('#accueil-liste .carte-animal img.vignette').getAttribute('src');
       assertMatch(thumbSrc, /^data:image\/jpeg;base64,/, 'Pet thumbnail data URL');
@@ -239,7 +138,7 @@ const tests = [
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-nom').fill('Apollo');
       await page.locator('#champ-race').fill('Beagle');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Identité');
 
       assertIncludes(await page.locator('#animal-titre').textContent(), 'Apollo');
       assertIncludes(await page.locator('#animal-contenu').textContent(), 'Beagle');
@@ -259,13 +158,11 @@ const tests = [
       await page.locator('#animal-contenu').getByRole('button', { name: 'Archiver cet animal', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('[data-champ="motif"] input[value="confié"]').check();
-      await submitForm(page);
+      await submitAnimalForm(page, 'Identité');
 
       await goTab(page, 'accueil');
       assertIncludes(await page.locator('#accueil-liste').textContent(), 'Aucun animal pour l’instant.');
-      const archBtn = page.locator('#accueil-actions').getByRole('button', { name: /Animaux archivés/ });
-      await archBtn.click();
-      await page.locator('.vue[data-vue="archives"]:not([hidden])').waitFor({ state: 'visible' });
+      await openArchives(page);
       assertIncludes(await page.locator('#archives-liste').textContent(), 'Milo');
       assertIncludes(await page.locator('#archives-liste').textContent(), 'confié');
 
@@ -291,11 +188,10 @@ const tests = [
       await page.locator('#animal-contenu').getByRole('button', { name: 'Archiver cet animal', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('[data-champ="motif"] input[value="vendu"]').check();
-      await submitForm(page);
+      await submitAnimalForm(page, 'Identité');
 
       await goTab(page, 'accueil');
-      await page.locator('#accueil-actions').getByRole('button', { name: /Animaux archivés/ }).click();
-      await page.locator('.vue[data-vue="archives"]:not([hidden])').waitFor({ state: 'visible' });
+      await openArchives(page);
       await page.locator('#archives-liste').getByRole('button', { name: 'Supprimer définitivement', exact: true }).click();
       await confirmDialog(page, 'Continuer', { expectNextDialog: true });
       await page.locator('dialog#dialogue[open] #dialogue-titre', { hasText: 'Dernière confirmation' }).waitFor({ state: 'visible' });
@@ -384,7 +280,7 @@ const tests = [
       await page.locator('#animal-contenu .carte-fiche').first().getByRole('button', { name: 'Modifier', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-valeur').fill('4,6');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Poids');
 
       assertIncludes(await page.locator('.chiffre-cle').textContent(), '4,6 kg');
       assertIncludes(await page.locator('#animal-contenu .carte-fiche').first().textContent(), '−0,4 kg');
@@ -483,7 +379,7 @@ const tests = [
       assertEqual(await page.locator('#champ-veterinaire').inputValue(), 'Dr Martin', 'Prefilled vet');
       assertEqual(await page.locator('#champ-date').inputValue(), isoDateOffset(0), 'Prefilled today date');
       await page.locator('#champ-rappel').fill(isoDateOffset(365));
-      await submitForm(page);
+      await submitAnimalForm(page, 'Vaccins');
 
       const cards = page.locator('#animal-contenu .carte-fiche');
       assertEqual(await cards.count(), 2);
@@ -505,7 +401,7 @@ const tests = [
       await page.locator('#champ-lot').fill('NEW-99');
       const newRappel = isoDateOffset(60);
       await page.locator('#champ-rappel').fill(newRappel);
-      await submitForm(page);
+      await submitAnimalForm(page, 'Vaccins');
 
       await reloadApp(page);
       await openPet(page, 'Bella', 'vaccins');
@@ -606,7 +502,7 @@ const tests = [
       assertEqual(await page.locator('#champ-produit').inputValue(), 'Drontal');
       assertEqual(await page.locator('#champ-dose').inputValue(), '1/2 comprimé');
       await page.locator('#champ-prochaine').fill(isoDateOffset(90));
-      await submitForm(page);
+      await submitAnimalForm(page, 'Vermifuges et antiparasitaires');
 
       const cards = page.locator('#animal-contenu .carte-fiche');
       assertEqual(await cards.count(), 2);
@@ -632,7 +528,7 @@ const tests = [
       await page.locator('#animal-contenu .carte-fiche').first().getByRole('button', { name: 'Modifier', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-dose').fill('3 pulvérisations');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Vermifuges et antiparasitaires');
       assertIncludes(await page.locator('#animal-contenu .carte-fiche').first().textContent(), '3 pulvérisations');
       await assertNoRuntimeErrors();
     },
@@ -753,7 +649,7 @@ const tests = [
       await page.locator('#animal-contenu .carte-fiche').first().getByRole('button', { name: 'Modifier', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-dose').fill('2 gouttes');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Traitements et médicaments');
       assertIncludes(await page.locator('#animal-contenu .carte-fiche').first().textContent(), '2 gouttes');
 
       await page.locator('#animal-contenu .carte-fiche').first().getByRole('button', { name: 'Supprimer', exact: true }).click();
@@ -809,7 +705,7 @@ const tests = [
       await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter le compte rendu', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-compteRendu').fill('Dents impeccables.');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Rendez-vous vétérinaires');
 
       assertIncludes(await page.locator('#animal-contenu .carte-fiche.termine').textContent(), 'Dents impeccables.');
       assertEqual(await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter le compte rendu', exact: true }).count(), 0);
@@ -869,7 +765,7 @@ const tests = [
       await page.locator('#animal-contenu .carte-fiche').first().getByRole('button', { name: 'Modifier', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-motif').fill('Rappel vaccin');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Rendez-vous vétérinaires');
       assertIncludes(await page.locator('#animal-contenu').textContent(), 'Rappel vaccin');
 
       await page.locator('#animal-contenu .carte-fiche').first().getByRole('button', { name: 'Supprimer', exact: true }).click();
@@ -985,7 +881,7 @@ const tests = [
       await page.locator('#animal-contenu .carte-fiche').first().getByRole('button', { name: 'Modifier', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-titre').fill('Acheter pâtée');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Choses à faire');
       assertIncludes(await page.locator('#animal-contenu').textContent(), 'Acheter pâtée');
 
       await page.locator('#animal-contenu .carte-fiche').first().getByRole('button', { name: 'Supprimer', exact: true }).click();
@@ -1202,7 +1098,7 @@ const tests = [
       await page.locator('[data-champ="pieces"] button[aria-label^="Retirer le document"]').click();
       await page.locator('[data-champ="pieces"] .champ-photo-zone .aide').filter({ hasText: 'Document retiré' }).waitFor({ state: 'visible' });
       await page.locator('#champ-texte').fill('Note sans document');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Notes de santé');
 
       assertEqual(await page.locator('#animal-contenu button.vignette-document').count(), 0);
       assertIncludes(await page.locator('#animal-contenu').textContent(), 'Note sans document');
@@ -1247,7 +1143,7 @@ const tests = [
       await page.locator('#animal-contenu').getByRole('button', { name: 'Modifier l’alimentation', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-alimEviter').fill('Chocolat et oignons');
-      await submitForm(page);
+      await submitAnimalForm(page, 'Alimentation');
 
       await openAnimalSection(page, 'identite');
       await openGarde(page);
@@ -1336,11 +1232,19 @@ const tests = [
       await openPet(page, 'Néo');
       await openGarde(page);
 
-      await page.locator('#garde-contenu').getByRole('button', { name: 'Imprimer ou enregistrer en PDF', exact: true }).click();
-      await page.locator('#carnet .fiche-garde').waitFor({ state: 'attached' });
-      const carnetText = await page.locator('#carnet .fiche-garde').textContent();
-      assertIncludes(carnetText, 'Fiche de garde');
-      assertIncludes(carnetText, 'Néo');
+      await probePrintView(
+        page,
+        () => page.locator('#garde-contenu').getByRole('button', { name: 'Imprimer ou enregistrer en PDF', exact: true }).click(),
+        {
+          carnetChildSelector: '.fiche-garde',
+          expectedTitleContains: 'Fiche de garde - Néo',
+          onPrint: async (p) => {
+            const carnetText = await p.locator('#carnet .fiche-garde').textContent();
+            assertIncludes(carnetText, 'Fiche de garde');
+            assertIncludes(carnetText, 'Néo');
+          },
+        }
+      );
       await assertNoRuntimeErrors();
     },
   },
@@ -1408,7 +1312,19 @@ const tests = [
       await page.locator('#vetos-liste .carte-fiche').first().getByRole('button', { name: 'Modifier', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-clinique').fill('Clinique Horizon');
-      await submitForm(page);
+      const prevVetChild = (await page.locator('#vetos-liste > *').count()) > 0
+        ? await page.locator('#vetos-liste > *').first().elementHandle().catch(() => null)
+        : null;
+      try {
+        await submitForm(page);
+        await page.locator('.vue[data-vue="veterinaires"]:not([hidden])').waitFor({ state: 'visible', timeout: 10000 });
+        if (prevVetChild) {
+          await page.waitForFunction((el) => !el.isConnected, prevVetChild, { timeout: 10000 });
+        }
+      } finally {
+        if (prevVetChild) await prevVetChild.dispose().catch(() => {});
+      }
+      await page.locator('#vetos-liste .carte-fiche').filter({ hasText: 'Clinique Horizon' }).first().waitFor({ state: 'visible', timeout: 10000 });
 
       assertIncludes(await page.locator('#vetos-liste').textContent(), 'Clinique Horizon');
       await openPet(page, 'Ruby');
@@ -1558,7 +1474,7 @@ const tests = [
       await page.locator('#animal-contenu').getByRole('button', { name: 'Archiver cet animal', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('[data-champ="motif"] input[value="autre"]').check();
-      await submitForm(page);
+      await submitAnimalForm(page, 'Identité');
       await goTab(page, 'accueil');
       await page.locator('#accueil-actions').getByRole('button', { name: /Animaux archivés/ }).click();
       await page.locator('#archives-liste').getByRole('button', { name: 'Supprimer définitivement', exact: true }).click();
@@ -1646,7 +1562,19 @@ const tests = [
       await page.locator('#champ-actuel').fill('AncienPass');
       await page.locator('#champ-nouveau').fill('NouveauPass');
       await page.locator('#champ-confirmation').fill('NouveauPass');
-      await submitForm(page);
+      const prevRegBlocChange = (await page.locator('#reglages-contenu > section.bloc').count()) > 0
+        ? await page.locator('#reglages-contenu > section.bloc').first().elementHandle().catch(() => null)
+        : null;
+      try {
+        await submitForm(page);
+        await page.locator('.vue[data-vue="reglages"]:not([hidden])').waitFor({ state: 'visible', timeout: 10000 });
+        if (prevRegBlocChange) {
+          await page.waitForFunction((el) => !el.isConnected, prevRegBlocChange, { timeout: 10000 });
+        }
+      } finally {
+        if (prevRegBlocChange) await prevRegBlocChange.dispose().catch(() => {});
+      }
+      await page.locator('#reglages-contenu').filter({ hasText: 'Le verrouillage par mot de passe est activé.' }).waitFor({ state: 'visible', timeout: 10000 });
 
       await reloadApp(page);
       await page.locator('#verrou-mdp').fill('AncienPass');
@@ -1668,7 +1596,19 @@ const tests = [
       await page.locator('#reglages-contenu').getByRole('button', { name: 'Désactiver le mot de passe', exact: true }).click();
       await page.locator('.vue[data-vue="formulaire"]:not([hidden])').waitFor({ state: 'visible' });
       await page.locator('#champ-actuel').fill('PassTemporaire');
-      await submitForm(page);
+      const prevRegBlocDisable = (await page.locator('#reglages-contenu > section.bloc').count()) > 0
+        ? await page.locator('#reglages-contenu > section.bloc').first().elementHandle().catch(() => null)
+        : null;
+      try {
+        await submitForm(page);
+        await page.locator('.vue[data-vue="reglages"]:not([hidden])').waitFor({ state: 'visible', timeout: 10000 });
+        if (prevRegBlocDisable) {
+          await page.waitForFunction((el) => !el.isConnected, prevRegBlocDisable, { timeout: 10000 });
+        }
+      } finally {
+        if (prevRegBlocDisable) await prevRegBlocDisable.dispose().catch(() => {});
+      }
+      await page.locator('#reglages-contenu').filter({ hasText: 'Le verrouillage par mot de passe est désactivé.' }).waitFor({ state: 'visible', timeout: 10000 });
 
       assertIncludes(await page.locator('#reglages-contenu').textContent(), 'Le verrouillage par mot de passe est désactivé.');
       await reloadApp(page);
@@ -1696,6 +1636,7 @@ const tests = [
       await page.locator('input[name="reglage-theme"][value="clair"]').check();
       assertEqual(await page.locator('html').getAttribute('data-theme'), 'clair');
       assertEqual(await page.evaluate(() => localStorage.getItem('omnianimaux_theme')), 'clair');
+      await waitForIdbSetting(page, 'theme', 'clair');
 
       await reloadApp(page);
       assertEqual(await page.locator('html').getAttribute('data-theme'), 'clair');
@@ -1720,6 +1661,7 @@ const tests = [
       assertEqual(await page.evaluate(() => localStorage.getItem('omnianimaux_taille')), 'tresgrand');
       const tresGrandPx = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
       assert(tresGrandPx > grandPx, `Expected tresgrand font-size (${tresGrandPx}) > grand (${grandPx})`);
+      await waitForIdbSetting(page, 'taille', 'tresgrand');
 
       await reloadApp(page);
       assertEqual(await page.locator('html').getAttribute('data-taille'), 'tresgrand');
@@ -1800,25 +1742,22 @@ const tests = [
     run: async ({ page, assertNoRuntimeErrors }) => {
       await loadDemoData(page);
       await openPet(page, 'Biscuit (exemple)');
-      await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
-      await page.locator('#carnet header.carnet-entete').waitFor({ state: 'attached' });
-
-      const screenCarnetDisplay = await page.locator('#carnet').evaluate((el) => getComputedStyle(el).display);
-      assertEqual(screenCarnetDisplay, 'none', '#carnet must stay hidden in screen media');
-
-      const carnetText = await page.locator('#carnet').textContent();
-      assertIncludes(carnetText, 'Carnet de santé');
-      assertIncludes(carnetText, 'Biscuit (exemple)');
-      assertIncludes(carnetText, 'Vaccins');
-      assertIncludes(carnetText, 'Rendez-vous vétérinaires');
-      assert(await page.locator('#carnet footer.carnet-pied').count() === 1, 'Footer present in #carnet');
-
-      await page.emulateMedia({ media: 'print' });
-      const printCarnetDisplay = await page.locator('#carnet').evaluate((el) => getComputedStyle(el).display);
-      const printMainDisplay = await page.locator('#principal').evaluate((el) => getComputedStyle(el).display);
-      assertEqual(printCarnetDisplay, 'block', '#carnet visible in print media');
-      assertEqual(printMainDisplay, 'none', '#principal hidden in print media');
-      await page.emulateMedia({ media: 'screen' });
+      await probePrintView(
+        page,
+        () => page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click(),
+        {
+          carnetChildSelector: 'header.carnet-entete',
+          expectedTitleContains: 'Carnet de santé - Biscuit (exemple)',
+          onPrint: async (p) => {
+            const carnetText = await p.locator('#carnet').textContent();
+            assertIncludes(carnetText, 'Carnet de santé');
+            assertIncludes(carnetText, 'Biscuit (exemple)');
+            assertIncludes(carnetText, 'Vaccins');
+            assertIncludes(carnetText, 'Rendez-vous vétérinaires');
+            assert(await p.locator('#carnet footer.carnet-pied').count() === 1, 'Footer present in #carnet');
+          },
+        }
+      );
       await assertNoRuntimeErrors();
     },
   },
@@ -1831,14 +1770,17 @@ const tests = [
       await openPet(page, 'Moka (exemple)');
       await openGarde(page);
 
-      await page.locator('#garde-contenu').getByRole('button', { name: 'Imprimer ou enregistrer en PDF', exact: true }).click();
-      await page.locator('#carnet .fiche-garde').waitFor({ state: 'attached' });
-      assertIncludes(await page.locator('#carnet .fiche-garde').textContent(), 'Moka (exemple)');
-
-      await page.emulateMedia({ media: 'print' });
-      assertEqual(await page.locator('#carnet').evaluate((el) => getComputedStyle(el).display), 'block');
-      assertEqual(await page.locator('#principal').evaluate((el) => getComputedStyle(el).display), 'none');
-      await page.emulateMedia({ media: 'screen' });
+      await probePrintView(
+        page,
+        () => page.locator('#garde-contenu').getByRole('button', { name: 'Imprimer ou enregistrer en PDF', exact: true }).click(),
+        {
+          carnetChildSelector: '.fiche-garde',
+          expectedTitleContains: 'Fiche de garde - Moka (exemple)',
+          onPrint: async (p) => {
+            assertIncludes(await p.locator('#carnet .fiche-garde').textContent(), 'Moka (exemple)');
+          },
+        }
+      );
       await assertNoRuntimeErrors();
     },
   },
@@ -1900,16 +1842,23 @@ const tests = [
       await openPet(page, 'Étoile');
       const titleBefore = await page.title();
 
-      await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
-      await page.locator('#carnet header.carnet-entete').waitFor({ state: 'attached' });
-      assertEqual(await page.locator('#carnet').evaluate((el) => getComputedStyle(el).display), 'none', 'Hidden in screen mode');
+      await withPrintStub(page, async ({ getPrintCallCount }) => {
+        await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
+        await page.locator('#carnet header.carnet-entete').waitFor({ state: 'attached' });
+        assertEqual(await getPrintCallCount(), 1, 'window.print() must be called once');
+        assertEqual(await page.locator('#carnet').evaluate((el) => getComputedStyle(el).display), 'none', 'Hidden in screen mode');
+        assertIncludes(await page.title(), 'Carnet de santé - Étoile', 'document.title updated during print');
 
-      await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-      await page.waitForTimeout(100);
+        await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+        await page.waitForFunction(() => {
+          const c = document.querySelector('#carnet');
+          return !c || c.children.length === 0;
+        }, null, { timeout: 5000 });
 
-      const remainingChildren = await page.locator('#carnet').evaluate((el) => el.children.length);
-      assertEqual(remainingChildren, 0, '#carnet must be cleared after print (afterprint)');
-      assertEqual(await page.title(), titleBefore, 'document.title restored after print');
+        const remainingChildren = await page.locator('#carnet').evaluate((el) => el.children.length);
+        assertEqual(remainingChildren, 0, '#carnet must be cleared after print (afterprint)');
+        assertEqual(await page.title(), titleBefore, 'document.title restored after print');
+      });
       await assertNoRuntimeErrors();
     },
   },

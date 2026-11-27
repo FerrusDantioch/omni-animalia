@@ -38,6 +38,8 @@ const SCHEMAS = {
     archive: 'b', motifArchive: 't', dateArchive: 'd',
     alimMarque: 't', alimQuantite: 't', alimRepas: 'n', alimRemarques: 't', alimEviter: 't',
     consignesGarde: 't',
+    poidsIdealMin: 'n', poidsIdealMax: 'n',
+    passeport: 't', assuranceCompagnie: 't', assuranceContrat: 't', assuranceTelephone: 't',
     exemple: 'b', creeLe: 'd'
   },
   pesees:           { id: 't', animalId: 't', date: 'd', grammes: 'n', note: 't', exemple: 'b' },
@@ -72,6 +74,12 @@ const MAX_PIECES = 6;          // documents joints au plus par note
 const MAX_PRISES_JOURS = 400;  // jours d'historique de prises au plus par traitement
 const ID_VALIDE = /^[A-Za-z0-9._-]{1,128}$/;
 const CHAMPS_ID = new Set(['id', 'animalId', 'vetoId', 'suivanteId']);
+const LIMITES_TEXTE_ANIMAL = {
+  passeport: 80,
+  assuranceCompagnie: 120,
+  assuranceContrat: 80,
+  assuranceTelephone: 30
+};
 
 /* Les magasins dont chaque fiche appartient à un animal */
 const MAGASINS_LIES = ['pesees', 'vaccins', 'antiparasitaires', 'traitements', 'rdv', 'notes', 'taches'];
@@ -101,7 +109,11 @@ function nettoyerFiche(magasin, fiche) {
       } else {
         const t = v.trim();
         if (!t) continue;
-        propre[champ] = t.slice(0, 10000);
+        if (magasin === 'animaux' && champ === 'assuranceTelephone' && /[\x00-\x1f\x7f]/.test(t)) {
+          throw new Error('numéro de téléphone invalide pour « ' + champ + ' »');
+        }
+        const max = (magasin === 'animaux' && LIMITES_TEXTE_ANIMAL[champ]) || 10000;
+        propre[champ] = t.slice(0, max);
       }
     } else if (type === 'd') {
       if (!Dates.estValide(v)) throw new Error('date incorrecte pour « ' + champ + ' »');
@@ -113,6 +125,9 @@ function nettoyerFiche(magasin, fiche) {
       if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new Error('nombre incorrect pour « ' + champ + ' »');
       const val = v === 0 ? 0 : v;
       if (magasin === 'pesees' && champ === 'grammes' && val <= 0) throw new Error('nombre incorrect pour « ' + champ + ' »');
+      if (magasin === 'animaux' && (champ === 'poidsIdealMin' || champ === 'poidsIdealMax') && val <= 0) {
+        throw new Error('nombre incorrect pour « ' + champ + ' »');
+      }
       if (magasin === 'taches' && champ === 'recN' && (!Number.isInteger(val) || val < 1)) throw new Error('nombre incorrect pour « ' + champ + ' »');
       if (magasin === 'taches' && champ === 'recJour' && (!Number.isInteger(val) || val < 1 || val > 31)) throw new Error('nombre incorrect pour « ' + champ + ' »');
       if (magasin === 'traitements' && champ === 'prisesParJour' && (!Number.isInteger(val) || val < 1 || val > 48)) throw new Error('nombre incorrect pour « ' + champ + ' »');
@@ -162,12 +177,56 @@ function nettoyerFiche(magasin, fiche) {
     if (propre.naissance && propre.dateArchive && propre.dateArchive < propre.naissance) {
       throw new Error('la date d’archivage précède la naissance');
     }
+    if (propre.poidsIdealMin !== undefined && propre.poidsIdealMax !== undefined && propre.poidsIdealMax < propre.poidsIdealMin) {
+      throw new Error('le poids idéal maximal doit être supérieur ou égal au minimal');
+    }
   }
   if (magasin === 'vaccins' && propre.date && propre.rappel && propre.rappel <= propre.date) {
     throw new Error('la date de rappel doit suivre la vaccination');
   }
   if (magasin === 'antiparasitaires' && propre.date && propre.prochaine && propre.prochaine <= propre.date) {
     throw new Error('la prochaine prise doit suivre la prise actuelle');
+  }
+  return propre;
+}
+
+/* Nettoie et vérifie les informations du vétérinaire d'urgence.
+   Renvoie null si toutes les informations sont vides, ou l'objet nettoyé. */
+function nettoyerVetoUrgence(valeur) {
+  if (valeur === undefined || valeur === null) return null;
+  if (typeof valeur !== 'object' || Array.isArray(valeur)) {
+    throw BD.erreur('Vétérinaire d’urgence illisible.');
+  }
+  const proto = Object.getPrototypeOf(valeur);
+  if (proto !== Object.prototype && proto !== null) {
+    throw BD.erreur('Vétérinaire d’urgence illisible.');
+  }
+  const limites = { nom: 120, clinique: 150, adresse: 500, notes: 5000 };
+  const propre = {};
+  for (const [champ, max] of Object.entries(limites)) {
+    if (Object.prototype.hasOwnProperty.call(valeur, champ) && valeur[champ] !== undefined && valeur[champ] !== null) {
+      if (typeof valeur[champ] !== 'string') {
+        throw BD.erreur('Champ « ' + champ + ' » du vétérinaire d’urgence invalide.');
+      }
+      propre[champ] = valeur[champ].trim().slice(0, max);
+    } else {
+      propre[champ] = '';
+    }
+  }
+  let telephone = '';
+  if (Object.prototype.hasOwnProperty.call(valeur, 'telephone') && valeur.telephone !== undefined && valeur.telephone !== null) {
+    if (typeof valeur.telephone !== 'string') {
+      throw BD.erreur('Téléphone du vétérinaire d’urgence invalide.');
+    }
+    const telTrim = valeur.telephone.trim();
+    if (telTrim && !/^[0-9+(). -]{3,30}$/.test(telTrim)) {
+      throw BD.erreur('Numéro de téléphone du vétérinaire d’urgence invalide.');
+    }
+    telephone = telTrim;
+  }
+  propre.telephone = telephone;
+  if (!propre.nom && !propre.clinique && !propre.telephone && !propre.adresse && !propre.notes) {
+    return null;
   }
   return propre;
 }
@@ -376,9 +435,13 @@ const BD = {
 
   /* Enregistre un réglage */
   async definirReglage(cle, valeur) {
+    let v = valeur;
+    if (cle === 'vetoUrgence' && v !== undefined && v !== null) {
+      v = nettoyerVetoUrgence(v);
+    }
     const tx = await this._transaction('reglages', 'readwrite');
-    if (valeur === undefined || valeur === null) tx.objectStore('reglages').delete(cle);
-    else tx.objectStore('reglages').put({ cle, valeur });
+    if (v === undefined || v === null) tx.objectStore('reglages').delete(cle);
+    else tx.objectStore('reglages').put({ cle, valeur: v });
     await this.finTransaction(tx);
   },
 

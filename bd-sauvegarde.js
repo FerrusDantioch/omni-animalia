@@ -18,6 +18,10 @@
 const Sauvegarde = {
   FORMAT: 'omni-animaux-sauvegarde',
   VERSION_FORMAT: 1,
+  VERSION_CHIFFREMENT: 1,
+  KDF: 'PBKDF2-SHA256',
+  ITERATIONS: 210000,
+  ALGO: 'AES-GCM',
   MAX_TAILLE_FICHIER: 50 * 1024 * 1024,
   MAX_FICHES: 50000,
 
@@ -26,6 +30,12 @@ const Sauvegarde = {
   /* Prépare le contenu du fichier de sauvegarde */
   async preparer() {
     const donnees = await BD.toutLire();
+    let vetoUrgence = null;
+    try {
+      vetoUrgence = nettoyerVetoUrgence(await BD.reglage('vetoUrgence', null));
+    } catch (e) {
+      vetoUrgence = null;
+    }
     return {
       format: this.FORMAT,
       versionFormat: this.VERSION_FORMAT,
@@ -35,18 +45,137 @@ const Sauvegarde = {
         theme: await BD.reglage('theme', 'omni'),
         taille: await BD.reglage('taille', 'normal'),
         unitePoids: await BD.reglage('unitePoids', 'kg'),
-        contactGarde: await BD.reglage('contactGarde', null)
+        contactGarde: await BD.reglage('contactGarde', null),
+        vetoUrgence
       },
       donnees
     };
+  },
+
+  /* ---------- Chiffrement optionnel (Web Crypto : PBKDF2 + AES-GCM) ---------- */
+
+  _verifierWebCrypto() {
+    if (typeof window === 'undefined' || !window.crypto || !crypto.subtle) {
+      throw BD.erreur('Ce navigateur ne permet pas le chiffrement (il faut une adresse https).');
+    }
+  },
+
+  _versBase64(octets) {
+    const arr = octets instanceof Uint8Array ? octets : new Uint8Array(octets);
+    const morceaux = [];
+    for (let i = 0; i < arr.length; i += 0x8000) {
+      morceaux.push(String.fromCharCode.apply(null, arr.subarray(i, i + 0x8000)));
+    }
+    return btoa(morceaux.join(''));
+  },
+
+  _depuisBase64(texte) {
+    if (typeof texte !== 'string' || !texte) {
+      throw BD.erreur('Cette sauvegarde chiffrée est abîmée.');
+    }
+    let binaire;
+    try {
+      binaire = atob(texte);
+    } catch (e) {
+      throw BD.erreur('Cette sauvegarde chiffrée est abîmée.');
+    }
+    const octets = new Uint8Array(binaire.length);
+    for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+    return octets;
+  },
+
+  estChiffree(objet) {
+    return !!(objet && typeof objet === 'object' && !Array.isArray(objet) &&
+      objet.format === this.FORMAT && objet.chiffre === true);
+  },
+
+  verifierEnveloppe(enveloppe) {
+    if (!this.estChiffree(enveloppe)) {
+      throw BD.erreur('Ce fichier n’est pas une sauvegarde chiffrée d’Omni-Animalia.');
+    }
+    if (!Number.isInteger(enveloppe.versionChiffrement) || enveloppe.versionChiffrement < 1) {
+      throw BD.erreur('Cette sauvegarde chiffrée est vide ou abîmée (version incorrecte).');
+    }
+    if (enveloppe.versionChiffrement > this.VERSION_CHIFFREMENT) {
+      throw BD.erreur('Cette sauvegarde vient d’une version plus récente d’Omni-Animalia. Mets l’application à jour, puis réessaie.');
+    }
+    if (enveloppe.kdf !== this.KDF || enveloppe.algo !== this.ALGO) {
+      throw BD.erreur('Cette sauvegarde chiffrée utilise une méthode inconnue ou abîmée.');
+    }
+    if (!Number.isInteger(enveloppe.iterations) || enveloppe.iterations < 10000 || enveloppe.iterations > 2000000) {
+      throw BD.erreur('Cette sauvegarde chiffrée est abîmée (paramètres invalides).');
+    }
+    const sel = this._depuisBase64(enveloppe.sel);
+    const iv = this._depuisBase64(enveloppe.iv);
+    const donnees = this._depuisBase64(enveloppe.donnees);
+    if (sel.length !== 16) throw BD.erreur('Cette sauvegarde chiffrée est abîmée (sel invalide).');
+    if (iv.length !== 12) throw BD.erreur('Cette sauvegarde chiffrée est abîmée (vecteur d’initialisation invalide).');
+    if (donnees.length < 16) throw BD.erreur('Cette sauvegarde chiffrée est abîmée (données incomplètes).');
+    return { sel, iv, donnees, iterations: enveloppe.iterations };
+  },
+
+  async _deriverCle(motDePasse, sel, iterations, usages) {
+    const cleMdp = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(motDePasse), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', hash: 'SHA-256', salt: sel, iterations },
+      cleMdp,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      usages
+    );
+  },
+
+  async chiffrer(objet, motDePasse) {
+    this._verifierWebCrypto();
+    if (!objet || typeof objet !== 'object' || Array.isArray(objet)) {
+      throw BD.erreur('Contenu de sauvegarde invalide.');
+    }
+    if (typeof motDePasse !== 'string' || !motDePasse.trim()) {
+      throw BD.erreur('Le mot de passe ne peut pas être vide.');
+    }
+    const sel = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cle = await this._deriverCle(motDePasse, sel, this.ITERATIONS, ['encrypt']);
+    const clair = new TextEncoder().encode(JSON.stringify(objet));
+    const chiffre = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cle, clair);
+    return {
+      format: this.FORMAT,
+      chiffre: true,
+      versionChiffrement: this.VERSION_CHIFFREMENT,
+      kdf: this.KDF,
+      iterations: this.ITERATIONS,
+      algo: this.ALGO,
+      sel: this._versBase64(sel),
+      iv: this._versBase64(iv),
+      donnees: this._versBase64(new Uint8Array(chiffre))
+    };
+  },
+
+  async dechiffrer(enveloppe, motDePasse) {
+    this._verifierWebCrypto();
+    const { sel, iv, donnees, iterations } = this.verifierEnveloppe(enveloppe);
+    if (typeof motDePasse !== 'string' || !motDePasse) {
+      throw BD.erreur('Entre un mot de passe.');
+    }
+    try {
+      const cle = await this._deriverCle(motDePasse, sel, iterations, ['decrypt']);
+      const clair = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cle, donnees);
+      const texte = new TextDecoder('utf-8', { fatal: true }).decode(clair);
+      return JSON.parse(texte);
+    } catch (e) {
+      throw BD.erreur('Mot de passe incorrect ou sauvegarde abîmée.');
+    }
   },
 
   /* Fabrique le fichier de sauvegarde (sans l'envoyer nulle part).
      « pourPartage » : Chrome sur Android refuse de partager un fichier
      .json ; on l'envoie donc comme un simple fichier texte (.txt). Le
      contenu est exactement le même, et « Restaurer » accepte les deux. */
-  async fichier(pourPartage) {
-    const contenu = await this.preparer();
+  async fichier(pourPartage, motDePasse) {
+    let contenu = await this.preparer();
+    if (motDePasse) contenu = await this.chiffrer(contenu, motDePasse);
     const nom = 'omni-animalia-sauvegarde-' + Dates.aujourdhui() + (pourPartage ? '.txt' : '.json');
     return new File([JSON.stringify(contenu)], nom, { type: pourPartage ? 'text/plain' : 'application/json' });
   },
@@ -55,8 +184,8 @@ const Sauvegarde = {
      e-mail…) ou le télécharge (mode « telecharger »).
      Renvoie { nom, taille, resultat } ; resultat vaut 'partage',
      'telecharge' ou 'annule' (menu de partage fermé sans choisir). */
-  async exporter(mode) {
-    const f = await this.fichier(mode === 'partager');
+  async exporter(mode, motDePasse) {
+    const f = await this.fichier(mode === 'partager', motDePasse);
     let resultat;
     if (mode === 'partager') {
       resultat = await Partage.envoyer(f, 'Sauvegarde Omni-Animalia');
@@ -70,9 +199,8 @@ const Sauvegarde = {
 
   /* ---------- Importer ---------- */
 
-  /* Lit le fichier choisi et vérifie qu'il est bien une sauvegarde valable.
-     Renvoie { donnees, reglages, resume } ou lance une erreur lisible. */
-  async lireFichier(fichier) {
+  /* Lit et parse le JSON d'un fichier de sauvegarde sans encore le déchiffrer ni valider. */
+  async lireObjet(fichier) {
     if (!fichier) throw BD.erreur('Aucun fichier choisi.');
     if (typeof fichier.size === 'number' && fichier.size > this.MAX_TAILLE_FICHIER) {
       throw BD.erreur('Ce fichier est beaucoup trop gros pour être une sauvegarde d’Omni-Animalia.');
@@ -83,11 +211,21 @@ const Sauvegarde = {
     } catch (e) {
       throw BD.erreur('Le fichier n’a pas pu être lu.');
     }
-    let objet;
     try {
-      objet = JSON.parse(texte);
+      return JSON.parse(texte);
     } catch (e) {
       throw BD.erreur('Ce fichier n’est pas une sauvegarde d’Omni-Animalia (il n’est pas au format JSON).');
+    }
+  },
+
+  /* Lit le fichier choisi et vérifie qu'il est bien une sauvegarde valable.
+     Si la sauvegarde est chiffrée, « motDePasse » est requis.
+     Renvoie { donnees, reglages, resume } ou lance une erreur lisible. */
+  async lireFichier(fichier, motDePasse) {
+    let objet = await this.lireObjet(fichier);
+    if (this.estChiffree(objet)) {
+      if (!motDePasse) throw BD.erreur('Cette sauvegarde est protégée par un mot de passe.');
+      objet = await this.dechiffrer(objet, motDePasse);
     }
     return this.valider(objet);
   },
@@ -96,6 +234,9 @@ const Sauvegarde = {
   valider(objet) {
     if (!objet || typeof objet !== 'object' || Array.isArray(objet) || objet.format !== this.FORMAT) {
       throw BD.erreur('Ce fichier n’est pas une sauvegarde d’Omni-Animalia.');
+    }
+    if (this.estChiffree(objet)) {
+      throw BD.erreur('Cette sauvegarde est protégée par un mot de passe.');
     }
     if (!Number.isInteger(objet.versionFormat) || objet.versionFormat < 1) {
       throw BD.erreur('Cette sauvegarde est vide ou abîmée (numéro de version incorrect).');
@@ -175,6 +316,14 @@ const Sauvegarde = {
         reglages.contactGarde = { nom, telephone };
       }
     }
+    if (Object.prototype.hasOwnProperty.call(r, 'vetoUrgence') && r.vetoUrgence !== undefined && r.vetoUrgence !== null) {
+      try {
+        const veto = nettoyerVetoUrgence(r.vetoUrgence);
+        if (veto) reglages.vetoUrgence = veto;
+      } catch (e) {
+        throw BD.erreur('Cette sauvegarde est abîmée (' + e.message + ').');
+      }
+    }
 
     const resume = {
       animaux: donnees.animaux.length,
@@ -202,6 +351,7 @@ const Sauvegarde = {
     if (mode === 'remplacer') {
       for (const nom of MAGASINS_DONNEES) tx.objectStore(nom).clear();
       if (!reglages || !reglages.contactGarde) reg.delete('contactGarde');
+      if (!reglages || !reglages.vetoUrgence) reg.delete('vetoUrgence');
       if (!reglages || !reglages.unitePoids) reg.delete('unitePoids');
       reg.delete('derniereSauvegarde');
     }

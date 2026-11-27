@@ -3,10 +3,10 @@
    https://creativecommons.org/licenses/by-nc-nd/4.0/ */
 
 /* ============================================================
-   Tests de régression Tier 5 (T5-01 .. T5-10) :
+   Tests de régression Tier 5 (T5-01 .. T5-14) :
    durcissement PWA hors-ligne, bornes numériques, verrouillage/impression,
    atomicité IDB, concurrence de rendu asynchrone, anti-brute-force
-   réglages et cohérence validation téléphone.
+   réglages, cohérence validation téléphone et durcissement R1–R5.
 
    Lancer :  node tests/tier5.js
    ============================================================ */
@@ -30,8 +30,8 @@ lancer('Omni-Animalia (Tier 5)', async () => {
   await section('T5-10 : Version, CACHE et exclusion de tests/tier5.js du Service Worker', async () => {
     const swTexte = fs.readFileSync(path.join(RACINE, 'sw.js'), 'utf8');
     const appTexte = fs.readFileSync(path.join(RACINE, 'app.js'), 'utf8');
-    verifier(/const CACHE = 'omni-animalia-v9';/.test(swTexte), 'sw.js : CACHE === omni-animalia-v9');
-    verifier(/const VERSION = '1\.2\.6';/.test(appTexte), 'app.js : VERSION === 1.2.6');
+    verifier(/const CACHE = 'omni-animalia-v10';/.test(swTexte), 'sw.js : CACHE === omni-animalia-v10');
+    verifier(/const VERSION = '1\.3\.0';/.test(appTexte), 'app.js : VERSION === 1.3.0');
     verifier(!swTexte.includes('tier5.js'), 'sw.js : FICHIERS n’inclut pas tests/tier5.js');
   });
 
@@ -622,6 +622,514 @@ lancer('Omni-Animalia (Tier 5)', async () => {
       !r.acceptTab && !r.acceptNl && r.acceptEspace && r.acceptIntl &&
       r.gardeTab && r.gardeNl && r.sauvTab && r.sauvNl,
       'T5-08 : Formulaire, EcranGarde et Sauvegarde rejettent \\t/\\n et acceptent espaces simples',
+      r
+    );
+  });
+
+  await section('T5-11 : R1 Partage.texte et EcranGarde (cas adverses, course verrou et IDB corrompue)', async () => {
+    const r = await p.evaluate(async () => {
+      await BD.toutEffacer();
+      await BD.definirReglage('avertissementVu', true);
+
+      const descShare = Object.getOwnPropertyDescriptor(navigator, 'share');
+      const descCanShare = Object.getOwnPropertyDescriptor(navigator, 'canShare');
+      const origCopier = UI.copier;
+      const annonce = document.querySelector('#annonce');
+
+      const restaurerPartage = () => {
+        if (descShare) Object.defineProperty(navigator, 'share', descShare);
+        else delete navigator.share;
+        if (descCanShare) Object.defineProperty(navigator, 'canShare', descCanShare);
+        else delete navigator.canShare;
+        UI.copier = origCopier;
+        annonce.textContent = '';
+      };
+
+      let partageRes;
+      try {
+        const vide = await Partage.texte('Titre', '');
+        const nul = await Partage.texte('Titre', null);
+
+        Object.defineProperty(navigator, 'share', { configurable: true, writable: true, value: async () => {} });
+        Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: undefined });
+        const sansCanShare = await Partage.texte('Titre', 'Corps');
+
+        let copierAppels = 0;
+        UI.copier = async () => { copierAppels++; return true; };
+
+        Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: () => false });
+        const canShareFalse = await Partage.texte('Titre', 'Corps');
+
+        Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: () => { throw new Error('canShare fail'); } });
+        const canShareThrow = await Partage.texte('Titre', 'Corps');
+
+        Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: () => true });
+        Object.defineProperty(navigator, 'share', {
+          configurable: true, writable: true,
+          value: async () => { const e = new Error('refusé'); e.name = 'NotAllowedError'; throw e; }
+        });
+        const shareNotAllowed = await Partage.texte('Titre', 'Corps');
+
+        Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: () => false });
+        UI.copier = async () => false;
+        annonce.textContent = '';
+        const copierEchec = await Partage.texte('Titre', 'Corps');
+        const annonceApresEchec = annonce.textContent;
+
+        partageRes = {
+          vide, nul, sansCanShare, canShareFalse, canShareThrow,
+          shareNotAllowed, copierAppels, copierEchec, annonceApresEchec
+        };
+      } finally {
+        restaurerPartage();
+      }
+
+      // Course EcranGarde.partager(a) + verrou pendant lecture IDB
+      const petPartage = { id: 'a_part', nom: 'Milo', espece: 'Chat', archive: false };
+      await BD.enregistrer('animaux', petPartage);
+      const origLire = BD.lire;
+      const origPartageTexte = Partage.texte;
+      let partageTexteAppels = 0;
+      Partage.texte = async () => { partageTexteAppels++; return 'copie'; };
+      let releaseLire;
+      const gateLire = new Promise((ok) => { releaseLire = ok; });
+      BD.lire = async (mag, id) => {
+        if (mag === 'animaux' && id === 'a_part') await gateLire;
+        return origLire.call(BD, mag, id);
+      };
+      const pPart = EcranGarde.partager(petPartage);
+      await new Promise((ok) => setTimeout(ok, 20));
+      document.querySelector('#verrou').hidden = false;
+      releaseLire();
+      await pPart;
+      BD.lire = origLire;
+      Partage.texte = origPartageTexte;
+      document.querySelector('#verrou').hidden = true;
+
+      // IDB corrompue avec { bad: 1 } sur champs secondaires dans contactGarde, veterinaires, animaux, notes, traitements
+      const db = await BD.ouvrir();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(['reglages', 'veterinaires', 'animaux', 'notes', 'traitements'], 'readwrite');
+        tx.objectStore('reglages').put({ cle: 'contactGarde', valeur: { nom: { bad: 1 }, telephone: { bad: 2 } } });
+        tx.objectStore('veterinaires').put({ id: 'v_obj', nom: { bad: 1 }, clinique: { bad: 2 }, telephone: { bad: 3 }, adresse: { bad: 4 }, notes: { bad: 5 } });
+        tx.objectStore('animaux').put({
+          id: 'a_obj', nom: 'TestObj', espece: { bad: 1 }, race: { bad: 2 }, vetoId: 'v_obj',
+          alimEviter: { bad: 1 }, alimMarque: { bad: 2 }, alimQuantite: { bad: 3 }, alimRemarques: { bad: 4 },
+          consignesGarde: { bad: 5 }, puce: { bad: 6 }, tatouage: { bad: 7 }, couleur: { bad: 8 }, archive: false
+        });
+        tx.objectStore('notes').put({ id: 'n_obj', animalId: 'a_obj', date: '2026-05-01', categorie: 'allergie', texte: { bad: 9 } });
+        tx.objectStore('traitements').put({ id: 't_obj', animalId: 'a_obj', nom: { bad: 1 }, dose: { bad: 2 }, frequence: { bad: 3 }, statut: 'en_cours' });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      const animalObj = await BD.lire('animaux', 'a_obj');
+      const ficheDom = await EcranGarde.construire(animalObj, false);
+      const domTxt = ficheDom.textContent || '';
+      const resumeTxt = EcranGarde.texteResume({
+        animal: animalObj,
+        veto: await BD.lire('veterinaires', 'v_obj'),
+        contact: await BD.reglage('contactGarde', null),
+        notes: await BD.parAnimal('notes', 'a_obj'),
+        traitements: await BD.parAnimal('traitements', 'a_obj'),
+        rappels: [{ animalId: 'a_obj', date: '2026-05-10', ecart: 2, titre: { bad: 10 } }],
+        reference: '2026-05-08'
+      });
+
+      return {
+        partageRes,
+        partageTexteAppels,
+        domHasObj: domTxt.includes('[object Object]'),
+        domHasUndef: domTxt.includes('undefined'),
+        resumeHasObj: resumeTxt.includes('[object Object]'),
+        resumeHasUndef: resumeTxt.includes('undefined')
+      };
+    });
+
+    verifier(
+      r.partageRes.vide === 'annule' && r.partageRes.nul === 'annule' &&
+      r.partageRes.sansCanShare === 'partage' && r.partageRes.canShareFalse === 'copie' &&
+      r.partageRes.canShareThrow === 'copie' && r.partageRes.shareNotAllowed === 'copie' &&
+      r.partageRes.copierAppels === 3 && r.partageRes.copierEchec === 'erreur' && r.partageRes.annonceApresEchec === '',
+      'T5-11 : Partage.texte gère chaînes vides/null, absence/rejet/throw de canShare/share et échec UI.copier',
+      r.partageRes
+    );
+    verifier(
+      r.partageTexteAppels === 0,
+      'T5-11 : EcranGarde.partager abandonne si #verrou devient visible pendant await IDB',
+      r.partageTexteAppels
+    );
+    verifier(
+      !r.domHasObj && !r.domHasUndef && !r.resumeHasObj && !r.resumeHasUndef,
+      'T5-11 : EcranGarde.construire et texteResume ignorent les champs non-chaînes corrompus sans [object Object] ni undefined',
+      r
+    );
+  });
+
+  await section('T5-12 : R2 Chiffrement/déchiffrement, restauration et fuite #sauvegarde-chiffree inter-vues', async () => {
+    const r = await p.evaluate(async () => {
+      await BD.toutEffacer();
+      await BD.definirReglage('avertissementVu', true);
+      await BD.enregistrer('animaux', { id: 'a_r2_keep', nom: 'IntactPet', espece: 'Chat', archive: false });
+
+      const rejetteAsync = async (fn) => {
+        try { await fn(); return false; } catch (e) { return !!(e && e.lisible); }
+      };
+      const rejetteSync = (fn) => {
+        try { fn(); return false; } catch (e) { return !!(e && e.lisible); }
+      };
+
+      const chArray = await rejetteAsync(() => Sauvegarde.chiffrer({}, ['abc']));
+      const chNull = await rejetteAsync(() => Sauvegarde.chiffrer({}, null));
+      const chSpaces = await rejetteAsync(() => Sauvegarde.chiffrer({}, '    '));
+
+      const envValide = await Sauvegarde.chiffrer({
+        format: Sauvegarde.FORMAT,
+        versionFormat: 1,
+        donnees: { animaux: [], veterinaires: [], pesees: [], vaccins: [], antiparasitaires: [], traitements: [], rdv: [], notes: [], taches: [] }
+      }, 'PassValide123');
+
+      const b64 = (len) => btoa(String.fromCharCode(...new Uint8Array(len)));
+      const envSel15 = rejetteSync(() => Sauvegarde.verifierEnveloppe({ ...envValide, sel: b64(15) }));
+      const envIv11 = rejetteSync(() => Sauvegarde.verifierEnveloppe({ ...envValide, iv: b64(11) }));
+      const envDonnees15 = rejetteSync(() => Sauvegarde.verifierEnveloppe({ ...envValide, donnees: b64(15) }));
+      const envBadB64 = rejetteSync(() => Sauvegarde.verifierEnveloppe({ ...envValide, sel: '***' }));
+
+      const decVide = await rejetteAsync(() => Sauvegarde.dechiffrer(envValide, ''));
+      const selBytes = Sauvegarde._depuisBase64(envValide.sel);
+      selBytes[0] ^= 0xff;
+      const decTamperSel = await rejetteAsync(() => Sauvegarde.dechiffrer({ ...envValide, sel: Sauvegarde._versBase64(selBytes) }, 'PassValide123'));
+
+      // Chiffrer des octets UTF-8 invalides avec une balise GCM valide
+      const selUtf = crypto.getRandomValues(new Uint8Array(16));
+      const ivUtf = crypto.getRandomValues(new Uint8Array(12));
+      const cleUtf = await Sauvegarde._deriverCle('PassUtf8', selUtf, Sauvegarde.ITERATIONS, ['encrypt']);
+      const badUtf8 = new Uint8Array([0xff, 0xfe, 0x80]);
+      const encBadUtf8 = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: ivUtf }, cleUtf, badUtf8);
+      const decBadUtf8 = await rejetteAsync(() => Sauvegarde.dechiffrer({
+        format: Sauvegarde.FORMAT,
+        chiffre: true,
+        versionChiffrement: 1,
+        kdf: Sauvegarde.KDF,
+        iterations: Sauvegarde.ITERATIONS,
+        algo: Sauvegarde.ALGO,
+        sel: Sauvegarde._versBase64(selUtf),
+        iv: Sauvegarde._versBase64(ivUtf),
+        donnees: Sauvegarde._versBase64(new Uint8Array(encBadUtf8))
+      }, 'PassUtf8'));
+
+      // EcranReglages.restaurer : sauvegarde chiffrée avec versionFormat: 99 -> sort de la boucle vers 'Fichier refusé'
+      const origDemanderMdp = UI.demanderMotDePasse;
+      const origInformer = UI.informer;
+      let mdpAppels = 0;
+      let informerTitre = '';
+      try {
+        const envV99 = await Sauvegarde.chiffrer({
+          format: Sauvegarde.FORMAT,
+          versionFormat: 99,
+          donnees: {}
+        }, 'MdpV99');
+        const fichierV99 = new File([JSON.stringify(envV99)], 'v99.json', { type: 'application/json' });
+        UI.demanderMotDePasse = async () => { mdpAppels++; return 'MdpV99'; };
+        UI.informer = async (opts) => { informerTitre = opts && opts.titre ? opts.titre : ''; };
+        await EcranReglages.restaurer(fichierV99);
+
+        // Annulation du mot de passe laisse IDB intacte
+        const fichierValide = new File([JSON.stringify(envValide)], 'valide.json', { type: 'application/json' });
+        UI.demanderMotDePasse = async () => null;
+        await EcranReglages.restaurer(fichierValide);
+      } finally {
+        UI.demanderMotDePasse = origDemanderMdp;
+        UI.informer = origInformer;
+      }
+      const animauxApresAnnul = await BD.tout('animaux');
+
+      // Cocher #sauvegarde-chiffree dans Réglages puis naviguer vers Accueil et lancer EcranReglages.sauvegarder()
+      await Nav.aller({ vue: 'reglages' });
+      await new Promise((ok) => setTimeout(ok, 80));
+      const caseChiffree = document.querySelector('#sauvegarde-chiffree');
+      caseChiffree.checked = true;
+      await Nav.aller({ vue: 'accueil' });
+      await new Promise((ok) => setTimeout(ok, 80));
+
+      const origPossible = Partage.possible;
+      const origTelecharger = Partage.telecharger;
+      let mdpPromptDepuisAccueil = 0;
+      let fichierExporte = null;
+      try {
+        Partage.possible = () => false;
+        Partage.telecharger = (f) => { fichierExporte = f; };
+        UI.demanderMotDePasse = async () => { mdpPromptDepuisAccueil++; return 'NeDoitPasServir'; };
+        await EcranReglages.sauvegarder();
+      } finally {
+        Partage.possible = origPossible;
+        Partage.telecharger = origTelecharger;
+        UI.demanderMotDePasse = origDemanderMdp;
+      }
+      const dialogueOuvert = document.querySelector('#dialogue').open;
+      const exportObjet = fichierExporte ? JSON.parse(await fichierExporte.text()) : null;
+
+      return {
+        chArray, chNull, chSpaces,
+        envSel15, envIv11, envDonnees15, envBadB64,
+        decVide, decTamperSel, decBadUtf8,
+        mdpAppels, informerTitre,
+        intactCount: animauxApresAnnul.length,
+        intactId: animauxApresAnnul[0] && animauxApresAnnul[0].id,
+        mdpPromptDepuisAccueil, dialogueOuvert,
+        exportEstChiffre: exportObjet ? Sauvegarde.estChiffree(exportObjet) : null,
+        exportFormat: exportObjet && exportObjet.format
+      };
+    });
+
+    verifier(
+      r.chArray && r.chNull && r.chSpaces && r.envSel15 && r.envIv11 && r.envDonnees15 && r.envBadB64 &&
+      r.decVide && r.decTamperSel && r.decBadUtf8,
+      'T5-12 : Sauvegarde rejette mots de passe invalides, enveloppes tronquées, sel altéré et UTF-8 invalide',
+      r
+    );
+    verifier(
+      r.mdpAppels === 1 && r.informerTitre === 'Fichier refusé' && r.intactCount === 1 && r.intactId === 'a_r2_keep',
+      'T5-12 : EcranReglages.restaurer sort de la boucle sur versionFormat:99 et laisse IDB intacte si annulé',
+      r
+    );
+    verifier(
+      r.mdpPromptDepuisAccueil === 0 && !r.dialogueOuvert && r.exportEstChiffre === false && r.exportFormat === 'omni-animaux-sauvegarde',
+      'T5-12 : #sauvegarde-chiffree dans Réglages ne fuit pas dans Accueil -> EcranReglages.sauvegarder()',
+      r
+    );
+  });
+
+  await section('T5-13 : R3 Rappels (anti-pollution prototype, bornes) et EcranAgenda (dépenses, garde Formulaire.courant)', async () => {
+    const r = await p.evaluate(async () => {
+      await BD.toutEffacer();
+      await BD.definirReglage('avertissementVu', true);
+
+      const prisesNull = Rappels.prisesANoter(null, '2026-05-10');
+      const prisesMauvais = Rappels.prisesANoter({ animaux: 'bad', traitements: 123 }, '2026-05-10');
+
+      const clesProto = ['__proto__', 'constructor', 'toString'];
+      const animauxProto = clesProto.map((id) => ({ id, nom: 'A_' + id, archive: false }));
+      const traitementsProto = [
+        ...clesProto.map((k) => ({ id: k, animalId: k, nom: 'Med_' + k, prisesParJour: 1, statut: 'en_cours', debut: '2026-05-01', prises: {} })),
+        { id: 't_over', animalId: '__proto__', nom: 'Over', prisesParJour: 1, statut: 'en_cours', debut: '2026-05-01', prises: { '2026-05-10': ['08:00', '20:00'] } },
+        { id: 't_bad_deb', animalId: '__proto__', nom: 'BadDeb', prisesParJour: 1, statut: 'en_cours', debut: 'pas-une-date', prises: [] },
+        { id: 't_bad_fin', animalId: '__proto__', nom: 'BadFin', prisesParJour: 1, statut: 'en_cours', debut: '2026-05-01', fin: '9999-99-99', prises: [] }
+      ];
+      const prisesProto = Rappels.prisesANoter({ animaux: animauxProto, traitements: traitementsProto }, '2026-05-10');
+      const protoOwnOk = clesProto.every((k) =>
+        Object.prototype.hasOwnProperty.call(prisesProto, k) &&
+        prisesProto[k].total === 1 &&
+        Object.prototype.hasOwnProperty.call(prisesProto[k].parTraitement, k) &&
+        prisesProto[k].parTraitement[k] === 1 &&
+        !Object.prototype.hasOwnProperty.call(prisesProto[k].parTraitement, 't_over')
+      );
+      const protoUnpolluted = ({}).total === undefined && ({}).parTraitement === undefined;
+
+      const pastVide = Rappels.pastillesAnimal(null, '');
+      const pastProto = Rappels.pastillesAnimal({
+        animaux: [{ id: '__proto__', nom: 'Proto', archive: false }],
+        rdv: [{ id: 'rdv_0', animalId: '__proto__', date: '2026-05-10', motif: 'Visite' }],
+        vaccins: [], antiparasitaires: [], traitements: [], taches: []
+      }, '__proto__', '2026-05-10');
+      const pastKeys = Object.keys(pastProto).sort();
+
+      // EcranAgenda.calculerBilanDepenses : 0, -0, 0.1 + 0.2
+      const animauxBilan = [{ id: 'a_b', nom: 'BilanPet', archive: false }];
+      const bilanZero = EcranAgenda.calculerBilanDepenses([
+        { id: 'r_z', animalId: 'a_b', date: '2026-05-01', cout: 0 }
+      ], animauxBilan);
+      const blocZero = EcranAgenda.blocBilanDepenses([
+        { id: 'r_z', animalId: 'a_b', date: '2026-05-01', cout: 0 }
+      ], animauxBilan);
+      const bilanNegZero = EcranAgenda.calculerBilanDepenses([
+        { id: 'r_nz', animalId: 'a_b', date: '2026-05-01', cout: -0 }
+      ], animauxBilan);
+      const bilanFloat = EcranAgenda.calculerBilanDepenses([
+        { id: 'r_1', animalId: 'a_b', date: '2026-05-01', cout: 0.1 },
+        { id: 'r_2', animalId: 'a_b', date: '2026-05-02', cout: 0.2 }
+      ], animauxBilan);
+
+      // EcranAgenda.carteRappel : garde Formulaire.courant sur actions rapides vaccin et antiparasitaire
+      let formVaccinAppels = 0;
+      let formApAppels = 0;
+      const origVaccin = EcranSante.formulaireVaccin;
+      const origAp = EcranSante.formulaireAP;
+      const origCourant = Formulaire.courant;
+      try {
+        EcranSante.formulaireVaccin = () => { formVaccinAppels++; };
+        EcranSante.formulaireAP = () => { formApAppels++; };
+        Formulaire.courant = { titre: 'Déjà ouvert', champs: [] };
+        const cVac = EcranAgenda.carteRappel({ id: 'v_q', animalId: 'a_b', type: 'vaccin', section: 'vaccins', date: '2026-05-10', ecart: 0, animalNom: 'BilanPet', titre: 'Vaccin' });
+        const cAp = EcranAgenda.carteRappel({ id: 'ap_q', animalId: 'a_b', type: 'antiparasitaire', section: 'antiparasitaires', date: '2026-05-10', ecart: 0, animalNom: 'BilanPet', titre: 'AP' });
+        cVac.querySelector('button').click();
+        cAp.querySelector('button').click();
+        await new Promise((ok) => setTimeout(ok, 40));
+      } finally {
+        EcranSante.formulaireVaccin = origVaccin;
+        EcranSante.formulaireAP = origAp;
+        Formulaire.courant = origCourant;
+      }
+
+      return {
+        prisesNullLen: Object.keys(prisesNull).length,
+        prisesMauvaisLen: Object.keys(prisesMauvais).length,
+        protoOwnOk, protoUnpolluted,
+        pastVide, pastProto, pastKeys,
+        bilanZeroTotal: bilanZero.totalGlobal,
+        blocZeroTxt: blocZero ? blocZero.textContent : '',
+        negZeroIsPlusZero: Object.is(bilanNegZero.totalGlobal, 0),
+        bilanFloatTotal: bilanFloat.totalGlobal,
+        formVaccinAppels, formApAppels
+      };
+    });
+
+    verifier(
+      r.prisesNullLen === 0 && r.prisesMauvaisLen === 0 && r.protoOwnOk && r.protoUnpolluted,
+      'T5-13 : Rappels.prisesANoter résiste aux entrées nulles/non-tableaux, sur-prises, dates invalides et clés __proto__/constructor/toString',
+      r
+    );
+    verifier(
+      JSON.stringify(r.pastKeys) === JSON.stringify(['antiparasitaires', 'taches', 'traitements', 'vaccins']) &&
+      !r.pastProto.vaccins && !r.pastProto.traitements && !r.pastProto.antiparasitaires && !r.pastProto.taches &&
+      !r.pastVide.vaccins && !r.pastVide.traitements && !r.pastVide.antiparasitaires && !r.pastVide.taches,
+      'T5-13 : Rappels.pastillesAnimal retourne strictement les 4 clés attendues sans fuite de clé rdv',
+      r
+    );
+    verifier(
+      r.bilanZeroTotal === 0 && r.blocZeroTxt.includes('0,00') && r.negZeroIsPlusZero && r.bilanFloatTotal === 0.3 &&
+      r.formVaccinAppels === 0 && r.formApAppels === 0,
+      'T5-13 : EcranAgenda gère cout:0/-0/0.1+0.2 et bloque les clics rapides quand Formulaire.courant est actif',
+      r
+    );
+  });
+
+  await section('T5-14 : R4/R5 Graphique, EcranSante +0,003 kg, EcranAnimal recherche/chronologie/carnet et assuranceTelephone <= 30', async () => {
+    const r = await p.evaluate(async () => {
+      await BD.toutEffacer();
+      await BD.definirReglage('avertissementVu', true);
+
+      // 1. Graphique.courbePoids avec unite omise et fourchettes invalides/extrêmes
+      const svgs = [
+        Graphique.courbePoids([{ date: '2026-05-01', grammes: 2 }], undefined, { minGrammes: 1, maxGrammes: 2 }),
+        Graphique.courbePoids([{ date: '2026-05-01', grammes: 4000 }], undefined, { minGrammes: 0, maxGrammes: 5000 }),
+        Graphique.courbePoids([{ date: '2026-05-01', grammes: 4000 }], undefined, { minGrammes: -1, maxGrammes: 5000 }),
+        Graphique.courbePoids([{ date: '2026-05-01', grammes: 4000 }], undefined, { minGrammes: NaN, maxGrammes: 5000 }),
+        Graphique.courbePoids([{ date: '2026-05-01', grammes: 4000 }], undefined, { minGrammes: 5000, maxGrammes: 4000 }),
+        Graphique.courbePoids([{ date: '2026-05-01', grammes: 4000 }], undefined, { minGrammes: 1000, maxGrammes: 900000 })
+      ];
+      const graphPropre = svgs.every((s) => {
+        if (!s) return false;
+        const html = s.outerHTML || '';
+        const aria = s.getAttribute('aria-label') || '';
+        return !html.includes('undefined') && !html.includes('NaN') && !aria.includes('undefined') && !aria.includes('NaN');
+      });
+
+      // 2. EcranSante.poids avec 4000 g et 4003 g en kg -> '+0,003 kg'
+      await BD.enregistrer('animaux', { id: 'a_var', nom: 'VarPet', espece: 'Chat', unitePoids: 'kg', archive: false });
+      await BD.enregistrer('pesees', { id: 'p_v1', animalId: 'a_var', date: '2026-05-01', grammes: 4000 });
+      await BD.enregistrer('pesees', { id: 'p_v2', animalId: 'a_var', date: '2026-05-02', grammes: 4003 });
+      await EcranAnimal.afficher('a_var', 'poids');
+      await new Promise((ok) => setTimeout(ok, 80));
+      const poidsTxt = (document.querySelector('#animal-contenu')?.textContent || '').replace(/\u00a0|\u202f/g, ' ');
+
+      // 3. EcranAnimal._extraitRecherche surrogates + requête diacritique seule
+      const txtEmoji = '🐶'.repeat(120) + ' fièvre ' + '🐱'.repeat(120);
+      const extraitEmoji = EcranAnimal._extraitRecherche(txtEmoji, 'fievre');
+      const loneSurrogateRe = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+      const hasLoneSurrogate = loneSurrogateRe.test(extraitEmoji);
+      const resDiacritique = EcranAnimal.rechercherDansDonnees('\u0301', {
+        notes: [{ id: 'n_d', date: '2026-05-01', categorie: 'note', texte: 'Fièvre' }]
+      });
+
+      // 4. EcranAnimal.construireChronologie : départage même date et symptôme sans texte avec pièces
+      const chrono = EcranAnimal.construireChronologie({
+        pesees: [{ id: 'p1', date: '2026-05-10', grammes: 4100 }],
+        traitements: [{ id: 't1', debut: '2026-05-10', nom: 'Antibio', statut: 'en_cours' }],
+        notes: [{ id: 'n1', date: '2026-05-10', categorie: 'symptome', texte: '', pieces: ['data:image/png;base64,AA=='] }],
+        rdv: [{ id: 'r1', date: '2026-05-10', motif: 'Contrôle' }]
+      }, 'kg');
+      const chronoTypes = chrono.map((e) => e.type);
+      const symptomeEp = chrono.find((e) => e.type === 'symptome');
+
+      // 5. EcranAnimal.imprimerCarnet(a, { periode: '12mois', annexe: true }) interrompu par #verrou pendant BD.parAnimal
+      const origPrint = window.print;
+      const origParAnimal = BD.parAnimal;
+      let printCalls = 0;
+      window.print = () => { printCalls++; };
+      let releaseCarnet;
+      const gateCarnet = new Promise((ok) => { releaseCarnet = ok; });
+      BD.parAnimal = async (mag, id) => {
+        await gateCarnet;
+        return origParAnimal.call(BD, mag, id);
+      };
+      const pCarnet = EcranAnimal.imprimerCarnet({ id: 'a_var', nom: 'VarPet', unitePoids: 'kg' }, { periode: '12mois', annexe: true });
+      await new Promise((ok) => setTimeout(ok, 20));
+      document.querySelector('#verrou').hidden = false;
+      releaseCarnet();
+      await pCarnet;
+      BD.parAnimal = origParAnimal;
+      window.print = origPrint;
+      const carnetLenApresVerrou = document.querySelector('#carnet').children.length;
+      document.querySelector('#verrou').hidden = true;
+
+      // 6. Alignement assuranceTelephone <= 30 (bd-base.js, ecran-animal.js formulaire & rendu identité)
+      const telTronque = nettoyerFiche('animaux', { id: 'a_t30', nom: 'Tel30', assuranceTelephone: '0'.repeat(45) });
+      await BD.enregistrer('animaux', { id: 'a_t35', nom: 'Tel35', unitePoids: 'kg', assuranceTelephone: '012345678901234567890123456789012345' });
+      const luT35 = await BD.lire('animaux', 'a_t35');
+      await EcranAnimal.afficher('a_t35', 'identite');
+      await new Promise((ok) => setTimeout(ok, 80));
+      const tel35Links = document.querySelectorAll('#animal-contenu a[href^="tel:"]').length;
+
+      await EcranAnimal.formulaire(luT35);
+      await new Promise((ok) => setTimeout(ok, 80));
+      const formTel = document.querySelector('#formulaire-zone form');
+      const maxLenInput = formTel.querySelector('#champ-assuranceTelephone').maxLength;
+      const verifTelOk = Object.keys(Formulaire.verifier(formTel).erreurs).length === 0;
+      Formulaire.reinitialiser();
+      await Nav.remplacer({ vue: 'accueil' });
+
+      return {
+        graphPropre,
+        poidsHas003: poidsTxt.includes('+0,003 kg'),
+        poidsHasPlus0: /\+0\s*kg/.test(poidsTxt),
+        hasLoneSurrogate,
+        extraitHasFievre: extraitEmoji.includes('fièvre'),
+        resDiacritiqueLen: resDiacritique.length,
+        chronoTypes,
+        symptomeTitre: symptomeEp && symptomeEp.titre,
+        symptomeLignes: symptomeEp && symptomeEp.lignes,
+        printCalls,
+        carnetLenApresVerrou,
+        telTronqueLen: telTronque.assuranceTelephone.length,
+        luT35Len: luT35.assuranceTelephone.length,
+        tel35Links,
+        maxLenInput,
+        verifTelOk
+      };
+    });
+
+    verifier(r.graphPropre, 'T5-14 : Graphique.courbePoids sans unite et avec fourchettes extrêmes/invalides sans undefined/NaN', r);
+    verifier(r.poidsHas003 && !r.poidsHasPlus0, 'T5-14 : EcranSante.poids affiche +0,003 kg (jamais +0 kg) pour 3 g d’écart en kg', r);
+    verifier(
+      !r.hasLoneSurrogate && r.extraitHasFievre && r.resDiacritiqueLen === 0,
+      'T5-14 : _extraitRecherche préserve les paires d’emojis et une requête diacritique seule renvoie []',
+      r
+    );
+    verifier(
+      JSON.stringify(r.chronoTypes) === JSON.stringify(['rdv', 'symptome', 'traitement', 'pesee']) &&
+      r.symptomeTitre === 'Symptôme noté' &&
+      JSON.stringify(r.symptomeLignes) === JSON.stringify([['Documents joints', '1']]),
+      'T5-14 : construireChronologie départage rdv/symptome/traitement/pesee et libelle un symptôme sans texte avec pièces',
+      r
+    );
+    verifier(
+      r.printCalls === 0 && r.carnetLenApresVerrou === 0,
+      'T5-14 : imprimerCarnet({ periode: 12mois, annexe: true }) avorte proprement si #verrou devient visible',
+      r
+    );
+    verifier(
+      r.telTronqueLen === 30 && r.luT35Len === 30 && r.maxLenInput === 30 && r.tel35Links === 1 && r.verifTelOk,
+      'T5-14 : assuranceTelephone aligné à <= 30 caractères du schéma au formulaire et au rendu identité',
       r
     );
   });

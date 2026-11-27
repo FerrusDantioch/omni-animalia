@@ -105,8 +105,8 @@ lancer('Unités M1 — Omni-Animalia', async () => {
   await section('M1.2 : sw.js (version, FICHIERS, cache hors-ligne et repli)', async () => {
     const swTexte = fs.readFileSync(path.join(RACINE, 'sw.js'), 'utf8');
     const appTexte = fs.readFileSync(path.join(RACINE, 'app.js'), 'utf8');
-    verifier(/const CACHE = 'omni-animalia-v9';/.test(swTexte), 'sw.js : CACHE incrémenté à omni-animalia-v9');
-    verifier(/const VERSION = '1\.2\.6';/.test(appTexte), 'app.js : VERSION incrémentée à 1.2.6');
+    verifier(/const CACHE = 'omni-animalia-v10';/.test(swTexte), 'sw.js : CACHE incrémenté à omni-animalia-v10');
+    verifier(/const VERSION = '1\.3\.0';/.test(appTexte), 'app.js : VERSION incrémentée à 1.3.0');
     verifier(swTexte.includes("'./init-theme.js'"), 'sw.js : init-theme.js présent dans FICHIERS');
     verifier(/remplissageEnCours/.test(swTexte) && /c\.put\(e\.request,\s*rep\.clone\(\)\)\.catch/.test(swTexte),
       'sw.js : déduplication du remplissage et garde c.put().catch()');
@@ -131,10 +131,10 @@ lancer('Unités M1 — Omni-Animalia', async () => {
     await pause(isoPage, 600);
 
     const aInitTheme = await isoPage.evaluate(async () => {
-      const c = await caches.open('omni-animalia-v9');
+      const c = await caches.open('omni-animalia-v10');
       return !!(await c.match('./init-theme.js'));
     });
-    verifier(aInitTheme, 'init-theme.js est bien mis en cache dans omni-animalia-v9');
+    verifier(aInitTheme, 'init-theme.js est bien mis en cache dans omni-animalia-v10');
 
     await isoCtx.setOffline(true);
     const bcdp = await browser.newBrowserCDPSession();

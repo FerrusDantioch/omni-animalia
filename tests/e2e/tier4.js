@@ -51,6 +51,7 @@ const {
   wipeAllData,
   unfoldIcs,
   captureWindowOpen,
+  withPrintStub,
   probePrintView,
   triggerBackgroundRelock,
   openGarde,
@@ -367,11 +368,15 @@ const tests = [
       // Activate lock, populate #carnet, trigger background relock -> #carnet cleared
       await activatePassword(page, 'Garde2026!');
       await openPet(page, 'Coco', 'identite');
-      await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
-      await page.locator('#carnet .carnet-entete').waitFor({ state: 'attached' });
-      await triggerBackgroundRelock(page, 305000);
-      assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0);
-      assertEqual(await page.locator('#principal').evaluate((el) => el.hidden), true);
+      await withPrintStub(page, async ({ getPrintCallCount }) => {
+        await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
+        await page.locator('#carnet .carnet-entete').waitFor({ state: 'attached' });
+        assertEqual(await getPrintCallCount(), 1, 'window.print() must be called once');
+        assert((await page.locator('#carnet').evaluate((el) => el.children.length)) > 0, '#carnet populated before relock');
+        await triggerBackgroundRelock(page, 305000);
+        assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0);
+        assertEqual(await page.locator('#principal').evaluate((el) => el.hidden), true);
+      });
 
       await unlockApp(page, 'Garde2026!');
       assertEqual(await page.locator('#animal-titre').textContent(), 'Coco');
@@ -1007,10 +1012,14 @@ const tests = [
 
       await activatePassword(page, 'SecLock99');
       await openPet(page, 'PetValid', 'identite');
-      await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
-      await page.locator('#carnet .carnet-entete').waitFor({ state: 'attached' });
-      await triggerBackgroundRelock(page, 305000);
-      assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0, '#carnet cleared on relock');
+      await withPrintStub(page, async ({ getPrintCallCount }) => {
+        await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
+        await page.locator('#carnet .carnet-entete').waitFor({ state: 'attached' });
+        assertEqual(await getPrintCallCount(), 1, 'window.print() must be called once');
+        assert((await page.locator('#carnet').evaluate((el) => el.children.length)) > 0, '#carnet populated before relock');
+        await triggerBackgroundRelock(page, 305000);
+        assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0, '#carnet cleared on relock');
+      });
 
       // 3 failed attempts trigger rate-limit cooldown on the 4th submit
       for (let i = 0; i < 3; i++) {

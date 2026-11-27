@@ -40,11 +40,17 @@ const EcranAccueil = {
   },
 
   /* La carte d'un animal (toute la carte est un bouton) */
-  carte(animal, compte) {
+  carte(animal, compte, prises) {
     const age = animal ? Dates.age(animal.naissance, animal.naissanceApprox) : '';
     const badges = el('div', { class: 'badges' });
     if (compte && compte.retard > 0) badges.append(el('span', { class: 'badge retard', text: compte.retard + ' en retard' }));
     if (compte && compte.bientot > 0) badges.append(el('span', { class: 'badge bientot', text: compte.bientot + ' bientôt' }));
+    const nbPrises = typeof prises === 'number'
+      ? (Number.isFinite(prises) && prises > 0 ? prises : 0)
+      : (prises && typeof prises.total === 'number' && Number.isFinite(prises.total) && prises.total > 0 ? prises.total : 0);
+    if (nbPrises > 0) {
+      badges.append(el('span', { class: 'badge prises', text: nbPrises + ' prise' + (nbPrises > 1 ? 's' : '') + ' à noter' }));
+    }
     return el('button', {
       type: 'button', class: 'carte carte-animal',
       onclick: () => Nav.aller({ vue: 'animal', id: animal.id, section: 'identite' })
@@ -67,6 +73,7 @@ const EcranAccueil = {
     const actifs = tous.filter((a) => a && !a.archive).sort((a, b) => this.parNom(a, b));
     const archives = tous.filter((a) => a && a.archive);
     const compte = Rappels.compterParAnimal(Rappels.calculer(d));
+    const prises = Rappels.prisesANoter(d);
 
     // Rappel discret de sauvegarde
     const fragBandeaux = document.createDocumentFragment();
@@ -97,7 +104,12 @@ const EcranAccueil = {
         el('p', { text: 'Aucun animal pour l’instant.' }),
         el('p', { text: 'Touche « Ajouter un animal » pour commencer. Pour essayer l’application sans rien taper, ouvre Réglages puis « Charger un exemple ».' })));
     }
-    for (const a of actifs) fragListe.append(this.carte(a, compte[a.id]));
+    for (const a of actifs) {
+      const id = a && typeof a.id === 'string' ? a.id : '';
+      const c = id && Object.prototype.hasOwnProperty.call(compte, id) ? compte[id] : null;
+      const p = id && Object.prototype.hasOwnProperty.call(prises, id) ? prises[id] : null;
+      fragListe.append(this.carte(a, c, p));
+    }
 
     const fragActions = document.createDocumentFragment();
     fragActions.append(bouton('Ajouter un animal', () => EcranAnimal.formulaire(null), { classe: 'principal large', icone: 'plus' }));

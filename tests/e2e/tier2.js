@@ -36,6 +36,9 @@ const {
   uploadFileBuffer,
   uploadJsonImport,
   rapidDoubleClick,
+  withPrintStub,
+  probePrintView,
+  waitForIdbSetting,
 } = require('./helpers');
 
 /* ---------- Local Opaque-Box UI Helpers ---------- */
@@ -1685,10 +1688,18 @@ const tests = [
       assertEqual(await page.locator('#garde-contenu').getByRole('button', { name: /consignes/i }).count(), 0, 'Consignes button hidden for archived pet');
       assertEqual(await page.locator('#garde-contenu a.lien-tel').count(), 1, 'Screen view has tel link');
 
-      await page.locator('#garde-contenu').getByRole('button', { name: 'Imprimer ou enregistrer en PDF', exact: true }).click();
-      await page.locator('#carnet .fiche-garde').waitFor({ state: 'attached' });
-      assertEqual(await page.locator('#carnet .fiche-garde a.lien-tel').count(), 0, 'Print view uses plain text phone');
-      assertIncludes(await page.locator('#carnet .fiche-garde').textContent(), 'Téléphone : 01 44 55 66 77');
+      await probePrintView(
+        page,
+        () => page.locator('#garde-contenu').getByRole('button', { name: 'Imprimer ou enregistrer en PDF', exact: true }).click(),
+        {
+          carnetChildSelector: '.fiche-garde',
+          expectedTitleContains: 'Fiche de garde - Poupée',
+          onPrint: async (p) => {
+            assertEqual(await p.locator('#carnet .fiche-garde a.lien-tel').count(), 0, 'Print view uses plain text phone');
+            assertIncludes(await p.locator('#carnet .fiche-garde').textContent(), 'Téléphone : 01 44 55 66 77');
+          },
+        }
+      );
       await assertNoRuntimeErrors();
     },
   },
@@ -2167,15 +2178,19 @@ const tests = [
 
       // Populate #carnet before activating lock
       await openAnimalSection(page, 'identite');
-      await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
-      await page.locator('#carnet header.carnet-entete').waitFor({ state: 'attached' });
+      await withPrintStub(page, async ({ getPrintCallCount }) => {
+        await page.locator('#animal-contenu').getByRole('button', { name: 'Carnet de santé (imprimer ou PDF)', exact: true }).click();
+        await page.locator('#carnet header.carnet-entete').waitFor({ state: 'attached' });
+        assertEqual(await getPrintCallCount(), 1, 'window.print() must be called once');
+        assert((await page.locator('#carnet').evaluate((el) => el.children.length)) > 0, '#carnet populated before lock');
 
-      await activatePassword(page, 'ClefSecrete');
-      await page.goto('about:blank', { waitUntil: 'domcontentloaded' });
-      await page.goto(`${baseUrl}${deepHash}`, { waitUntil: 'domcontentloaded' });
-      await page.locator('#verrou:not([hidden])').waitFor({ state: 'visible' });
-      assertEqual(await page.locator('#principal').evaluate((el) => el.hidden), true);
-      assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0, '#carnet cleared when lock displayed');
+        await activatePassword(page, 'ClefSecrete');
+        await page.goto('about:blank', { waitUntil: 'domcontentloaded' });
+        await page.goto(`${baseUrl}${deepHash}`, { waitUntil: 'domcontentloaded' });
+        await page.locator('#verrou:not([hidden])').waitFor({ state: 'visible' });
+        assertEqual(await page.locator('#principal').evaluate((el) => el.hidden), true);
+        assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0, '#carnet cleared when lock displayed');
+      });
 
       // Try popstate / hashchange while locked
       await page.evaluate(() => { window.location.hash = '#accueil'; });
@@ -2323,6 +2338,7 @@ const tests = [
         await page.locator(`input[name="reglage-theme"][value="${theme}"]`).check();
         assertEqual(await page.locator('meta[name="theme-color"]').getAttribute('content'), color, `theme-color for ${theme}`);
       }
+      await waitForIdbSetting(page, 'theme', 'clair');
       await reloadApp(page);
       assertEqual(await page.locator('html').getAttribute('data-theme'), 'clair');
       assertEqual(await page.locator('meta[name="theme-color"]').getAttribute('content'), '#eef0f2');
@@ -2455,7 +2471,7 @@ const tests = [
       await addAppointment(page, { date: isoDateOffset(5), heure: '11:00', motif: 'Vaccin' });
 
       await context.setOffline(true);
-      await page.waitForFunction(() => navigator.onLine === false, { timeout: 5000 });
+      await page.waitForFunction(() => navigator.onLine === false, null, { timeout: 5000 });
 
       await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter à Google Agenda', exact: true }).click();
       const dlg = page.locator('dialog#dialogue[open]');
@@ -2469,7 +2485,7 @@ const tests = [
 
       // Network recovery
       await context.setOffline(false);
-      await page.waitForFunction(() => navigator.onLine === true, { timeout: 5000 });
+      await page.waitForFunction(() => navigator.onLine === true, null, { timeout: 5000 });
       await openPet(page, 'Resilient', 'rdv');
       await page.locator('#animal-contenu').getByRole('button', { name: 'Ajouter à Google Agenda', exact: true }).click();
       await dlg.waitFor({ state: 'visible' });
@@ -2513,16 +2529,22 @@ const tests = [
 
       await page.locator('#animal-contenu').getByRole('button', { name: 'Fiche de garde', exact: true }).click();
       await page.locator('.vue[data-vue="garde"]:not([hidden])').waitFor({ state: 'visible' });
-      await page.locator('#garde-contenu').getByRole('button', { name: 'Imprimer ou enregistrer en PDF', exact: true }).click();
-      await page.locator('#carnet .fiche-garde').waitFor({ state: 'attached' });
-      assertIncludes(await page.locator('#carnet').textContent(), 'PrintGarde');
-      assertEqual(await page.title(), 'Fiche de garde - PrintGarde', 'document.title set during care sheet print');
+      await withPrintStub(page, async ({ getPrintCallCount }) => {
+        await page.locator('#garde-contenu').getByRole('button', { name: 'Imprimer ou enregistrer en PDF', exact: true }).click();
+        await page.locator('#carnet .fiche-garde').waitFor({ state: 'attached' });
+        assertEqual(await getPrintCallCount(), 1, 'window.print() must be called once');
+        assertIncludes(await page.locator('#carnet').textContent(), 'PrintGarde');
+        assertEqual(await page.title(), 'Fiche de garde - PrintGarde', 'document.title set during care sheet print');
 
-      await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-      await page.waitForTimeout(100);
+        await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+        await page.waitForFunction(() => {
+          const c = document.querySelector('#carnet');
+          return !c || c.children.length === 0;
+        }, null, { timeout: 5000 });
 
-      assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0, '#carnet must be cleared after print (afterprint)');
-      assertEqual(await page.title(), titleBefore, 'document.title restored after print');
+        assertEqual(await page.locator('#carnet').evaluate((el) => el.children.length), 0, '#carnet must be cleared after print (afterprint)');
+        assertEqual(await page.title(), titleBefore, 'document.title restored after print');
+      });
       await assertNoRuntimeErrors();
     },
   },

@@ -820,5 +820,189 @@ lancer('Omni-Animalia (M3)', async () => {
     verifier(r.msgInvalide.includes('invalide') && r.msgEnvErr.includes('Échec partage') && !r.resteDansDom, 'erreurs Agenda gérées et Partage.telecharger nettoyé', { msgInvalide: r.msgInvalide, msgEnvErr: r.msgEnvErr, resteDansDom: r.resteDansDom });
   });
 
+  await section('Rappels : prisesANoter et pastillesAnimal (R3)', async () => {
+    const r = await p.evaluate(() => {
+      const ref = '2026-11-26';
+      const donnees = {
+        animaux: [
+          { id: 'a_chron', nom: 'Biscuit', archive: false },
+          { id: 'a_multi', nom: 'Moka', archive: false },
+          { id: 'a_arch', nom: 'Ancien', archive: true },
+          { id: 'a_propre', nom: 'Propre', archive: false }
+        ],
+        traitements: [
+          // Chronique sans fin, 2 prises par jour
+          { id: 't_chron', animalId: 'a_chron', nom: 'Insuline', statut: 'en-cours', debut: '2026-01-01', prisesParJour: 2, prises: { '2026-11-26': ['08:00'] } },
+          // Borné actif aujourd'hui, 0 prise faite sur 3
+          { id: 't_borne', animalId: 'a_multi', nom: 'Antibio', statut: 'en-cours', debut: '2026-11-20', fin: '2026-11-26', prisesParJour: 3 },
+          // Chronique sans date de début ni de fin, 1 prise sur 2 faite
+          { id: 't_nodate', animalId: 'a_multi', nom: 'Gouttes', statut: 'en-cours', prisesParJour: 2, prises: { '2026-11-26': ['09:00'] } },
+          // Déjà complet (2 prises sur 2)
+          { id: 't_plein', animalId: 'a_multi', nom: 'Complet', statut: 'en-cours', prisesParJour: 2, prises: { '2026-11-26': ['08:00', '20:00'] } },
+          // Surdose (3 prises pour 2 prévues) -> 0 restant
+          { id: 't_sur', animalId: 'a_propre', nom: 'Surdose', statut: 'en-cours', prisesParJour: 2, prises: { '2026-11-26': ['08:00', '12:00', '20:00'] } },
+          // Expiré (fin < ref) -> non compté dans prisesANoter
+          { id: 't_exp', animalId: 'a_propre', nom: 'Expiré', statut: 'en-cours', debut: '2026-11-01', fin: '2026-11-25', prisesParJour: 2 },
+          // Futur (debut > ref) -> non compté
+          { id: 't_fut', animalId: 'a_propre', nom: 'Futur', statut: 'en-cours', debut: '2026-11-27', prisesParJour: 2 },
+          // Terminé -> non compté
+          { id: 't_term', animalId: 'a_propre', nom: 'Terminé', statut: 'termine', prisesParJour: 2 },
+          // Animal archivé -> non compté
+          { id: 't_arch', animalId: 'a_arch', nom: 'Archivé', statut: 'en-cours', prisesParJour: 2 }
+        ]
+      };
+
+      const prises = Rappels.prisesANoter(donnees, ref);
+
+      // Sécurité prototype (noms de propriétés réservés)
+      const protoDonnees = {
+        animaux: [
+          { id: 'toString', nom: 'A1', archive: false },
+          { id: 'constructor', nom: 'A2', archive: false },
+          { id: 'valueOf', nom: 'A3', archive: false },
+          { id: '__proto__', nom: 'A4', archive: false }
+        ],
+        traitements: [
+          { id: 'constructor', animalId: 'toString', nom: 'T1', statut: 'en-cours', prisesParJour: 1 },
+          { id: 'toString', animalId: 'constructor', nom: 'T2', statut: 'en-cours', prisesParJour: 2 },
+          { id: 'valueOf', animalId: 'valueOf', nom: 'T3', statut: 'en-cours', prisesParJour: 1 },
+          { id: '__proto__', animalId: '__proto__', nom: 'T4', statut: 'en-cours', prisesParJour: 3 }
+        ]
+      };
+      const prisesProto = Rappels.prisesANoter(protoDonnees, ref);
+
+      // pastillesAnimal
+      const dPast = {
+        animaux: [
+          { id: 'a1', nom: 'Tout', archive: false },
+          { id: 'a2', nom: 'ChroniqueSeul', archive: false },
+          { id: 'a3', nom: 'FuturEtRdv', archive: false },
+          { id: 'a4', nom: 'Renouvele', archive: false },
+          { id: 'a_arch', nom: 'Arch', archive: true }
+        ],
+        vaccins: [
+          { id: 'v1', animalId: 'a1', nom: 'Rage', date: '2025-11-26', rappel: '2026-11-25' }, // retard
+          { id: 'v2', animalId: 'a3', nom: 'Typhus', date: '2026-01-01', rappel: '2026-12-01' }, // futur
+          { id: 'v3', animalId: 'a4', nom: 'Rage', date: '2025-11-01', rappel: '2026-11-01' }, // ancien
+          { id: 'v4', animalId: 'a4', nom: 'Rage', date: '2026-11-01', rappel: '2027-11-01' } // renouvelé -> pas de pastille
+        ],
+        antiparasitaires: [
+          { id: 'ap1', animalId: 'a1', type: 'vermifuge', date: '2026-08-26', prochaine: '2026-11-26' }, // aujourd'hui
+          { id: 'ap2', animalId: 'a4', type: 'anti-puces', date: '2026-10-01', prochaine: '2026-11-01' },
+          { id: 'ap3', animalId: 'a4', type: 'anti-puces', date: '2026-11-01', prochaine: '2026-12-10' } // renouvelé
+        ],
+        traitements: [
+          { id: 'tr1', animalId: 'a2', nom: 'Chron', statut: 'en-cours', prisesParJour: 1 },
+          { id: 'tr_done', animalId: 'a4', nom: 'Fait', statut: 'en-cours', prisesParJour: 1, prises: { '2026-11-26': ['08:00'] } }
+        ],
+        rdv: [
+          { id: 'rdv1', animalId: 'a3', date: '2026-11-26', heure: '14:00', motif: 'Visite' }
+        ],
+        taches: [
+          { id: 'k1', animalId: 'a1', titre: 'Griffes', echeance: '2026-11-26', fait: false },
+          { id: 'k2', animalId: 'a3', titre: 'Futur', echeance: '2026-11-27', fait: false },
+          { id: 'k3', animalId: 'a_arch', titre: 'Arch', echeance: '2026-11-20', fait: false }
+        ]
+      };
+
+      return {
+        prisesProtoNull: Object.getPrototypeOf(prises) === null,
+        chronTotal: prises.a_chron && prises.a_chron.total,
+        chronT: prises.a_chron && prises.a_chron.parTraitement.t_chron,
+        multiTotal: prises.a_multi && prises.a_multi.total,
+        multiBorne: prises.a_multi && prises.a_multi.parTraitement.t_borne,
+        multiNodate: prises.a_multi && prises.a_multi.parTraitement.t_nodate,
+        multiPlein: prises.a_multi && prises.a_multi.parTraitement.t_plein,
+        aPropreOmitted: prises.a_propre === undefined,
+        aArchOmitted: prises.a_arch === undefined,
+        prisesNull: Object.keys(Rappels.prisesANoter(null, ref)).length,
+        prisesBadTypes: Object.keys(Rappels.prisesANoter({ animaux: 'x', traitements: 42 }, ref)).length,
+        prisesBadRef: Rappels.prisesANoter({ animaux: [{ id: 'a1', nom: 'A' }], traitements: [{ id: 't1', animalId: 'a1', statut: 'en-cours', prisesParJour: 1 }] }, 'invalide').a1.total,
+        protoCheck: {
+          protoNull: Object.getPrototypeOf(prisesProto) === null,
+          ts: prisesProto['toString'] && prisesProto['toString'].total,
+          ct: prisesProto['constructor'] && prisesProto['constructor'].total,
+          vo: prisesProto['valueOf'] && prisesProto['valueOf'].total,
+          pr: Object.prototype.hasOwnProperty.call(prisesProto, '__proto__') && prisesProto['__proto__'].total
+        },
+        pTout: Rappels.pastillesAnimal(dPast, 'a1', ref),
+        pChron: Rappels.pastillesAnimal(dPast, 'a2', ref),
+        pFutur: Rappels.pastillesAnimal(dPast, 'a3', ref),
+        pRenouv: Rappels.pastillesAnimal(dPast, 'a4', ref),
+        pArch: Rappels.pastillesAnimal(dPast, 'a_arch', ref),
+        pInconnu: Rappels.pastillesAnimal(dPast, 'inexistant', ref),
+        pNull: Rappels.pastillesAnimal(null, 'a1', ref)
+      };
+    });
+
+    verifier(r.prisesProtoNull && r.chronTotal === 1 && r.chronT === 1, 'prisesANoter inclut les traitements chroniques sans date de fin et décompte les prises du jour', r);
+    verifier(r.multiTotal === 4 && r.multiBorne === 3 && r.multiNodate === 1 && r.multiPlein === undefined, 'prisesANoter somme plusieurs traitements actifs et omet ceux à 0 restant', r);
+    verifier(r.aPropreOmitted && r.aArchOmitted && r.prisesNull === 0 && r.prisesBadTypes === 0 && r.prisesBadRef === 1, 'prisesANoter exclut expirés/futurs/terminés/archivés/surdoses et gère entrées invalides', r);
+    verifier(r.protoCheck.protoNull && r.protoCheck.ts === 1 && r.protoCheck.ct === 2 && r.protoCheck.vo === 1 && r.protoCheck.pr === 3, 'prisesANoter immunisé contre les clés toString/constructor/valueOf/__proto__', r.protoCheck);
+    verifier(r.pTout.vaccins && !r.pTout.traitements && r.pTout.antiparasitaires && r.pTout.taches, 'pastillesAnimal allume vaccins/antiparasitaires/taches en retard ou du jour', r.pTout);
+    verifier(!r.pChron.vaccins && r.pChron.traitements && !r.pChron.antiparasitaires && !r.pChron.taches, 'pastillesAnimal allume traitements pour un traitement chronique avec prise à noter', r.pChron);
+    verifier(!r.pFutur.vaccins && !r.pFutur.traitements && !r.pFutur.antiparasitaires && !r.pFutur.taches, 'pastillesAnimal ignore rappels futurs et rdv du jour', r.pFutur);
+    verifier(!r.pRenouv.vaccins && !r.pRenouv.traitements && !r.pRenouv.antiparasitaires && !r.pRenouv.taches, 'pastillesAnimal éteint les onglets après renouvellement ou prise complète', r.pRenouv);
+    verifier(!r.pArch.taches && !r.pInconnu.vaccins && !r.pNull.vaccins, 'pastillesAnimal renvoie tout faux pour animal archivé, inconnu ou données nulles');
+  });
+
+  await section('Graphique : fourchette de poids idéal (R4)', async () => {
+    const r = await p.evaluate(() => {
+      const pesees = [
+        { id: '1', date: '2026-10-01', grammes: 4000 },
+        { id: '2', date: '2026-11-01', grammes: 4500 }
+      ];
+      const svg2 = Graphique.courbePoids(pesees, 'kg');
+      const svgNull = Graphique.courbePoids(pesees, 'kg', null);
+      const svgBad1 = Graphique.courbePoids(pesees, 'kg', { minGrammes: 0, maxGrammes: 4500 });
+      const svgBad2 = Graphique.courbePoids(pesees, 'kg', { minGrammes: 5000, maxGrammes: 4000 });
+      const svgBad3 = Graphique.courbePoids(pesees, 'kg', { minGrammes: NaN, maxGrammes: 4500 });
+      const svgBad4 = Graphique.courbePoids(pesees, 'kg', []);
+
+      // Fourchette au-dessus de toutes les pesées (test échelle Y et ordre DOM)
+      const svgKg = Graphique.courbePoids(pesees, 'kg', { minGrammes: 6000, maxGrammes: 8000 });
+      const enfantsKg = [...svgKg.children].map((c) => c.getAttribute('class'));
+      const bandeKg = svgKg.querySelector('rect.bande-ideale');
+      const pointsKg = [...svgKg.querySelectorAll('circle.point')];
+
+      // En grammes
+      const svgG = Graphique.courbePoids([{ id: '1', date: '2026-11-01', grammes: 1200 }], 'g', { minGrammes: 900, maxGrammes: 1100 });
+      const bandeG = svgG.querySelector('rect.bande-ideale');
+
+      // Fourchette ponctuelle min === max -> hauteur >= 2
+      const svgEgal = Graphique.courbePoids(pesees, 'kg', { minGrammes: 4200, maxGrammes: 4200 });
+      const bandeEgal = svgEgal.querySelector('rect.bande-ideale');
+
+      return {
+        identique2Args: svg2.outerHTML === svgNull.outerHTML &&
+          svg2.outerHTML === svgBad1.outerHTML &&
+          svg2.outerHTML === svgBad2.outerHTML &&
+          svg2.outerHTML === svgBad3.outerHTML &&
+          svg2.outerHTML === svgBad4.outerHTML,
+        sansBande2Args: svg2.querySelectorAll('.bande-ideale').length === 0,
+        videNull: Graphique.courbePoids([], 'kg', { minGrammes: 3000, maxGrammes: 4000 }) === null,
+        bandeAvantCourbe: Boolean(bandeKg) &&
+          enfantsKg.indexOf('bande-ideale') < enfantsKg.indexOf('repere') &&
+          enfantsKg.indexOf('bande-ideale') < enfantsKg.indexOf('courbe') &&
+          enfantsKg.indexOf('bande-ideale') < enfantsKg.indexOf('point'),
+        kgOk: !svgKg.outerHTML.includes('NaN') &&
+          Number(bandeKg.getAttribute('y')) >= 16 &&
+          Number(bandeKg.getAttribute('y')) + Number(bandeKg.getAttribute('height')) <= 186 &&
+          pointsKg.every((c) => Number(c.getAttribute('cy')) >= 16 && Number(c.getAttribute('cy')) <= 186),
+        ariaKg: svgKg.getAttribute('aria-label'),
+        gOk: Boolean(bandeG) && !svgG.outerHTML.includes('NaN') && Number(bandeG.getAttribute('height')) > 0,
+        egalHauteur: bandeEgal ? Number(bandeEgal.getAttribute('height')) : 0,
+        ariaEgal: svgEgal.getAttribute('aria-label')
+      };
+    });
+
+    verifier(r.identique2Args && r.sansBande2Args && r.videNull,
+      'courbePoids à 2 arguments ou fourchette nulle/invalide reste identique et sans .bande-ideale');
+    verifier(r.bandeAvantCourbe && r.kgOk && r.ariaKg.includes('Fourchette de poids idéal'),
+      'courbePoids trace .bande-ideale sous les repères/courbe/points et élargit l’axe Y', r);
+    verifier(r.gOk && r.egalHauteur >= 2 && r.ariaEgal.includes('Poids idéal'),
+      'courbePoids gère l’unité g, un seul point et min === max (hauteur >= 2)', r);
+  });
+
   await ctx.close();
 });

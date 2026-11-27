@@ -62,6 +62,38 @@ const Partage = {
     return 'telecharge';
   },
 
+  /* Partage un texte simple (fiche de garde, animal perdu…) via le menu
+     « Partager » ou le copie dans le presse-papiers si le partage n'est pas
+     possible. Renvoie 'partage', 'copie', 'annule' ou 'erreur'. */
+  async texte(titre, texte) {
+    const corps = typeof texte === 'string' ? texte : String(texte || '');
+    if (!corps) return 'annule';
+    const donnees = titre ? { title: String(titre), text: corps } : { text: corps };
+    let peutPartager = false;
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      if (typeof navigator.canShare === 'function') {
+        try { peutPartager = !!navigator.canShare(donnees); } catch (e) { peutPartager = false; }
+      } else {
+        peutPartager = true;
+      }
+    }
+    if (peutPartager) {
+      try {
+        await navigator.share(donnees);
+        return 'partage';
+      } catch (e) {
+        if (e && e.name === 'AbortError') return 'annule';
+        // Autre problème (partage refusé…) : on copie à la place
+      }
+    }
+    const ok = await UI.copier(corps);
+    if (ok !== false) {
+      UI.annoncer('Texte copié dans le presse-papiers.');
+      return 'copie';
+    }
+    return 'erreur';
+  },
+
   /* Un nom de fichier sans accents ni caractères gênants :
      « Rappel : Rage (Biscuit) » → « rappel-rage-biscuit » */
   nomFichier(texte) {

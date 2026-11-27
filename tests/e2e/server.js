@@ -31,6 +31,7 @@ function isContained(rootDir, targetPath) {
 }
 
 function sendError(res, statusCode, message) {
+  if (res.writableEnded || res.destroyed || res.headersSent) return;
   res.writeHead(statusCode, {
     'Content-Type': 'text/plain; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -38,11 +39,34 @@ function sendError(res, statusCode, message) {
   res.end(message);
 }
 
+function sendCached(req, res, cached) {
+  if (res.writableEnded || res.destroyed || res.headersSent) return;
+  res.writeHead(200, {
+    'Content-Type': cached.contentType,
+    'Content-Length': cached.data.length,
+    'Cache-Control': 'no-store',
+  });
+  if (req.method === 'HEAD') {
+    res.end();
+  } else {
+    res.end(cached.data);
+  }
+}
+
 function startStaticServer(rootDir) {
   const resolvedRoot = path.resolve(rootDir);
   const sockets = new Set();
+  const fileCache = new Map();
 
   const server = http.createServer((req, res) => {
+    let aborted = false;
+    req.on('aborted', () => {
+      aborted = true;
+    });
+    res.on('error', () => {
+      aborted = true;
+    });
+
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return sendError(res, 405, 'Method Not Allowed');
     }
@@ -77,7 +101,13 @@ function startStaticServer(rootDir) {
       return sendError(res, 403, 'Forbidden');
     }
 
+    const directHit = fileCache.get(candidate);
+    if (directHit) {
+      return sendCached(req, res, directHit);
+    }
+
     fs.stat(candidate, (statErr, stats) => {
+      if (aborted) return;
       if (statErr) {
         return sendError(res, 404, 'Not Found');
       }
@@ -101,26 +131,42 @@ function startStaticServer(rootDir) {
         return sendError(res, 404, 'Not Found');
       }
 
+      const targetHit = fileCache.get(target);
+      if (targetHit) {
+        return sendCached(req, res, targetHit);
+      }
+
       fs.readFile(target, (readErr, data) => {
+        if (aborted) return;
         if (readErr) {
           return sendError(res, 500, 'Internal Server Error');
         }
-        res.writeHead(200, {
-          'Content-Type': getMimeType(target),
-          'Content-Length': data.length,
-          'Cache-Control': 'no-store',
-        });
-        if (req.method === 'HEAD') {
-          res.end();
-        } else {
-          res.end(data);
-        }
+        const entry = {
+          contentType: getMimeType(target),
+          data,
+        };
+        fileCache.set(target, entry);
+        sendCached(req, res, entry);
       });
     });
   });
 
+  server.keepAliveTimeout = 60000;
+  server.headersTimeout = 65000;
+
+  server.on('clientError', (err, socket) => {
+    if (err && err.code === 'ECONNRESET') return;
+    if (socket && socket.writable && !socket.destroyed) {
+      socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+    } else if (socket) {
+      socket.destroy();
+    }
+  });
+
   server.on('connection', (socket) => {
+    socket.setNoDelay(true);
     sockets.add(socket);
+    socket.on('error', () => {});
     socket.on('close', () => sockets.delete(socket));
   });
 
@@ -139,6 +185,7 @@ function startStaticServer(rootDir) {
             socket.destroy();
           }
           sockets.clear();
+          fileCache.clear();
         });
 
       resolve({ url, port, close });

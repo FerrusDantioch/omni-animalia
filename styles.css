@@ -476,6 +476,7 @@ main {
   margin: 12px 0 4px;
 }
 .bouton-section {
+  position: relative;
   min-height: 52px;
   padding: 6px 4px;
   border: 2px solid var(--bord-bouton);
@@ -495,10 +496,32 @@ main {
   border-color: var(--accent);
   color: var(--accent-texte);
 }
+.pastille-section {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--retard);
+  border: 1.5px solid var(--surface-2);
+  pointer-events: none;
+}
+.bouton-section[aria-current="true"] .pastille-section {
+  background: var(--accent-texte);
+  border-color: var(--accent);
+}
 
 /* La courbe de poids */
 .figure-graphique { margin: 12px 0; padding: 10px; }
 .graphique { display: block; width: 100%; height: auto; }
+.graphique .bande-ideale {
+  fill: var(--accent);
+  fill-opacity: 0.16;
+  stroke: var(--accent);
+  stroke-opacity: 0.35;
+  stroke-width: 1;
+}
 .graphique .repere { stroke: var(--trait); stroke-width: 1; }
 .graphique .courbe { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .graphique .point { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
@@ -521,7 +544,7 @@ main {
   font-family: var(--f-titre);
   font-weight: 600;
 }
-input[type="text"], input[type="date"], input[type="time"], input[type="tel"],
+input[type="text"], input[type="search"], input[type="date"], input[type="time"], input[type="tel"],
 input[type="password"], select, textarea {
   display: block;
   width: 100%;
@@ -534,6 +557,7 @@ input[type="password"], select, textarea {
   font-family: var(--f-texte);
   font-size: 1.05rem;           /* au moins 16 px : le téléphone ne zoome pas */
 }
+input[type="search"] { -webkit-appearance: none; appearance: none; }
 textarea { min-height: 110px; resize: vertical; line-height: 1.45; }
 input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--retard); }
 
@@ -618,6 +642,9 @@ input[type="radio"], input[type="checkbox"] {
 .dialogue-corps { padding: 18px 18px 16px; }
 .dialogue-corps h2 { margin-top: 0; }
 .dialogue-corps label { display: block; margin-top: 12px; font-weight: 600; }
+.dialogue-corps input[type="password"],
+.dialogue-corps input[type="text"] { margin-top: 6px; }
+.dialogue-corps .message-erreur { margin-top: 6px; }
 .dialogue-boutons { display: flex; flex-wrap: wrap-reverse; gap: 10px; margin-top: 18px; }
 .dialogue-boutons .bouton { flex: 1 1 140px; }
 
@@ -746,3 +773,127 @@ html[data-taille="grand"], html[data-taille="tresgrand"] { --hauteur-nav: 76px; 
 .garde-alerte h2 { color: var(--retard); }
 .garde-medicament + .garde-medicament { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--trait); }
 .garde-pied { color: var(--discret); font-size: 0.9rem; }
+
+
+/* ---------- 19. Évolutions (urgences, filtres, recherche, chronologie, bilan, options) ---------- */
+.veto-urgence {
+  background: var(--surface);
+  border: var(--carte-bord);
+  border-top: 4px solid var(--retard);
+  border-radius: var(--rayon-carte);
+  padding: 14px 16px;
+  margin: 12px 0 16px;
+  overflow-wrap: anywhere;
+}
+.veto-urgence .etiquette,
+.veto-urgence h2 { color: var(--retard); }
+
+.filtre-animal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0 16px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-radius: 12px;
+}
+.filtre-animal label {
+  font-family: var(--f-titre);
+  font-weight: 600;
+}
+.filtre-animal select {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.bilan-depenses {
+  margin: 16px 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: var(--carte-bord);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.bilan-depenses h2 { margin-top: 0; }
+.bilan-depenses .ligne {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.bilan-depenses .ligne-total {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--trait);
+  font-weight: 700;
+}
+.bilan-depenses .mono { flex-shrink: 0; }
+
+.recherche-animal { margin: 12px 0; }
+.recherche-animal label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--f-titre);
+  font-weight: 600;
+}
+.recherche-animal-champ {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+.recherche-animal-champ input[type="search"] {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.resultats-recherche {
+  margin: 10px 0 16px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.resultat-recherche {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--surface-2);
+  color: var(--texte);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon-bouton);
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.chronologie-carte {
+  border-top: var(--carte-bord);
+  border-left: 4px solid var(--accent);
+}
+
+.options-carnet,
+.options-sauvegarde {
+  margin: 10px 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+}
+.options-carnet legend,
+.options-sauvegarde legend {
+  font-family: var(--f-titre);
+  font-weight: 600;
+  margin-bottom: 4px;
+}

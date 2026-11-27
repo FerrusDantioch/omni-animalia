@@ -151,6 +151,8 @@ function createCorruptPngBuffer() {
 
 /* ---------- Browser & Context Lifecycle ---------- */
 
+const pageMonitors = new WeakMap();
+
 async function launchBrowser(overrides = {}) {
   const { chromium } = loadPlaywright();
   return chromium.launch({
@@ -187,12 +189,40 @@ async function waitForReady(page) {
       if (name === 'reglages') return !!vue.querySelector('#reglages-contenu > section.bloc');
       return true;
     },
+    null,
     { timeout: 15000 }
   );
   const fatalHidden = await page.locator('#erreur-fatale').evaluate((el) => el.hidden);
   if (!fatalHidden) {
     const fatalText = await page.locator('#erreur-fatale-texte').textContent();
-    throw new Error(`Fatal error screen displayed: ${fatalText}`);
+    const monitors = pageMonitors.get(page);
+    const details = [];
+    if (monitors) {
+      if (monitors.failedRequests.length) {
+        details.push(`failedRequests=${JSON.stringify(monitors.failedRequests)}`);
+      }
+      if (monitors.badResponses.length) {
+        details.push(`badResponses=${JSON.stringify(monitors.badResponses)}`);
+      }
+      if (monitors.pageErrors.length) {
+        details.push(`pageErrors=${JSON.stringify(monitors.pageErrors)}`);
+      }
+      if (monitors.consoleErrors.length) {
+        details.push(`consoleErrors=${JSON.stringify(monitors.consoleErrors)}`);
+      }
+      if (monitors.cspViolations.length) {
+        details.push(`cspViolations=${JSON.stringify(monitors.cspViolations)}`);
+      }
+      if (monitors.externalRequests.length) {
+        details.push(`externalRequests=${JSON.stringify(monitors.externalRequests)}`);
+      }
+    }
+    const suffix = details.length ? ` [${details.join('; ')}]` : '';
+    const err = new Error(`Fatal error screen displayed: ${fatalText}${suffix}`);
+    if (monitors) {
+      err.monitors = monitors;
+    }
+    throw err;
   }
 }
 
@@ -280,6 +310,7 @@ async function withAppContext(browser, baseUrl, fn, options = {}) {
   });
 
   const page = await context.newPage();
+  pageMonitors.set(page, monitors);
 
   page.on('pageerror', (err) => {
     monitors.pageErrors.push(err && (err.stack || err.message) ? (err.stack || err.message) : String(err));
@@ -356,7 +387,9 @@ async function withAppContext(browser, baseUrl, fn, options = {}) {
       problems.push(`externalRequests=${JSON.stringify(monitors.externalRequests)}`);
     }
     if (problems.length) {
-      throw new Error(`Runtime monitor violations detected: ${problems.join('; ')}`);
+      const err = new Error(`Runtime monitor violations detected: ${problems.join('; ')}`);
+      err.monitors = monitors;
+      throw err;
     }
   }
 
@@ -377,6 +410,7 @@ async function withAppContext(browser, baseUrl, fn, options = {}) {
     return await fn({ browser, page, context, monitors, baseUrl, assertNoRuntimeErrors, syncCspViolations });
   } finally {
     await cleanupSwOffline().catch(() => {});
+    await page.close().catch(() => {});
     await context.close();
   }
 }
@@ -425,6 +459,7 @@ const ANIMAL_SECTION_TITLES = {
   notes: 'Notes de santé',
   alimentation: 'Alimentation',
   taches: 'Choses à faire',
+  chronologie: 'Chronologie',
 };
 
 const ANIMAL_TITLE_TO_SECTION = Object.fromEntries(
@@ -441,6 +476,7 @@ const ANIMAL_SECTION_READY = {
   rdv: '#animal-contenu .encart.vide, #animal-contenu .carte-fiche',
   notes: '#animal-contenu .encart.vide, #animal-contenu p[aria-live="polite"]',
   taches: '#animal-contenu .encart.vide, #animal-contenu .carte-fiche',
+  chronologie: '#animal-contenu .encart.vide, #animal-contenu .carte-fiche, #animal-contenu .chronologie-liste',
 };
 
 const ANY_ANIMAL_SECTION_READY = Object.values(ANIMAL_SECTION_READY).join(', ');
@@ -761,7 +797,7 @@ async function setOfflineWithSw(browser, context, page, offline) {
         await existing.bcdp.detach().catch(() => {});
       }
     }
-    await page.waitForFunction(() => navigator.onLine === true, { timeout: 5000 });
+    await page.waitForFunction(() => navigator.onLine === true, null, { timeout: 5000 });
     return;
   }
 
@@ -812,7 +848,7 @@ async function setOfflineWithSw(browser, context, page, offline) {
     throw err;
   }
 
-  await page.waitForFunction(() => navigator.onLine === false, { timeout: 5000 });
+  await page.waitForFunction(() => navigator.onLine === false, null, { timeout: 5000 });
 }
 
 async function getCachedPaths(page) {
@@ -1200,38 +1236,136 @@ async function captureWindowOpen(page, triggerFn) {
   }
 }
 
-async function probePrintView(page, triggerFn, { carnetChildSelector = '> *', expectedTitleContains, expectedTitleRestore, onPrint } = {}) {
-  const titleBefore = expectedTitleRestore !== undefined ? expectedTitleRestore : await page.title();
-  await triggerFn();
-  await page.locator(`#carnet ${carnetChildSelector}`).first().waitFor({ state: 'attached', timeout: 10000 });
-
-  if (expectedTitleContains) {
-    assertIncludes(await page.title(), expectedTitleContains, 'document.title during print');
-  }
-  const screenDisplay = await page.locator('#carnet').evaluate((el) => getComputedStyle(el).display);
-  assertEqual(screenDisplay, 'none', '#carnet must be hidden on screen media');
-
+async function withPrintStub(page, fn) {
+  await page.evaluate(() => {
+    window.__omniOrigPrintHasOwn = Object.prototype.hasOwnProperty.call(window, 'print');
+    window.__omniOrigPrintDesc = Object.getOwnPropertyDescriptor(window, 'print');
+    window.__omniPrintCalls = 0;
+    window.print = () => {
+      window.__omniPrintCalls += 1;
+    };
+  });
+  const getPrintCallCount = () =>
+    page.evaluate(() => (typeof window.__omniPrintCalls === 'number' ? window.__omniPrintCalls : 0));
   try {
-    await page.emulateMedia({ media: 'print' });
-    const printStyles = await page.evaluate(() => ({
-      carnetDisplay: getComputedStyle(document.querySelector('#carnet')).display,
-      principalDisplay: getComputedStyle(document.querySelector('#principal')).display,
-    }));
-    assertEqual(printStyles.carnetDisplay, 'block', '#carnet must be visible (block) in print media');
-    assertEqual(printStyles.principalDisplay, 'none', '#principal must be hidden in print media');
-    if (typeof onPrint === 'function') {
-      await onPrint(page);
-    }
+    return await fn({ getPrintCallCount });
   } finally {
-    await page.emulateMedia({ media: 'screen' });
+    await page.evaluate(() => {
+      if (window.__omniOrigPrintHasOwn && window.__omniOrigPrintDesc) {
+        Object.defineProperty(window, 'print', window.__omniOrigPrintDesc);
+      } else {
+        delete window.print;
+      }
+      delete window.__omniOrigPrintHasOwn;
+      delete window.__omniOrigPrintDesc;
+      delete window.__omniPrintCalls;
+    }).catch(() => {});
   }
+}
 
-  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-  await page.waitForFunction(() => {
-    const c = document.querySelector('#carnet');
-    return !c || c.children.length === 0;
-  }, { timeout: 5000 });
-  assertEqual(await page.title(), titleBefore, 'document.title restored after print');
+async function probePrintView(page, triggerFn, optionsOrOnPrint = {}, expectedTitleIncludes) {
+  const opts = typeof optionsOrOnPrint === 'function'
+    ? { onPrint: optionsOrOnPrint, expectedTitleContains: expectedTitleIncludes }
+    : (optionsOrOnPrint || {});
+  const {
+    carnetChildSelector = '> *',
+    expectedTitleContains = expectedTitleIncludes,
+    expectedTitleRestore,
+    onPrint,
+  } = opts;
+
+  return withPrintStub(page, async ({ getPrintCallCount }) => {
+    const titleBefore = expectedTitleRestore !== undefined ? expectedTitleRestore : await page.title();
+    await triggerFn();
+    await page.locator(`#carnet ${carnetChildSelector}`).first().waitFor({ state: 'attached', timeout: 10000 });
+    assertEqual(await getPrintCallCount(), 1, 'window.print() must be called once');
+
+    if (expectedTitleContains) {
+      assertIncludes(await page.title(), expectedTitleContains, 'document.title during print');
+    }
+    const screenDisplay = await page.locator('#carnet').evaluate((el) => getComputedStyle(el).display);
+    assertEqual(screenDisplay, 'none', '#carnet must be hidden on screen media');
+
+    try {
+      await page.emulateMedia({ media: 'print' });
+      const printStyles = await page.evaluate(() => ({
+        carnetDisplay: getComputedStyle(document.querySelector('#carnet')).display,
+        principalDisplay: getComputedStyle(document.querySelector('#principal')).display,
+      }));
+      assertEqual(printStyles.carnetDisplay, 'block', '#carnet must be visible (block) in print media');
+      assertEqual(printStyles.principalDisplay, 'none', '#principal must be hidden in print media');
+      if (typeof onPrint === 'function') {
+        await onPrint(page);
+      }
+    } finally {
+      await page.emulateMedia({ media: 'screen' });
+    }
+
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#carnet');
+      return !c || c.children.length === 0;
+    }, null, { timeout: 5000 });
+    assertEqual(await page.title(), titleBefore, 'document.title restored after print');
+  });
+}
+
+async function waitForIdbSetting(page, key, expectedValue, timeout = 5000) {
+  const deadline = Date.now() + timeout;
+  const expectMissing = expectedValue === undefined || expectedValue === null;
+  while (true) {
+    const matched = await page.evaluate(
+      ({ k, expected, expectMissing: missing }) => new Promise((resolve) => {
+        try {
+          const req = indexedDB.open('omni-animalia');
+          req.onerror = () => resolve(false);
+          req.onblocked = () => resolve(false);
+          req.onupgradeneeded = () => {
+            try { req.transaction.abort(); } catch (_err) {}
+            try { if (req.result) req.result.close(); } catch (_err) {}
+            resolve(false);
+          };
+          req.onsuccess = () => {
+            const db = req.result;
+            try {
+              if (!db.objectStoreNames.contains('reglages')) {
+                db.close();
+                resolve(false);
+                return;
+              }
+              const tx = db.transaction('reglages', 'readonly');
+              const getReq = tx.objectStore('reglages').get(k);
+              getReq.onsuccess = () => {
+                const rec = getReq.result;
+                try { db.close(); } catch (_err) {}
+                if (missing) resolve(rec === undefined);
+                else resolve(rec !== undefined && rec.valeur === expected);
+              };
+              getReq.onerror = () => {
+                try { db.close(); } catch (_err) {}
+                resolve(false);
+              };
+            } catch (_e) {
+              try { db.close(); } catch (_err) {}
+              resolve(false);
+            }
+          };
+        } catch (_e) {
+          resolve(false);
+        }
+      }),
+      {
+        k: key,
+        expected: expectMissing ? null : expectedValue,
+        expectMissing,
+      }
+    );
+    if (matched) return;
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out after ${timeout}ms waiting for IDB setting "${key}" === ${JSON.stringify(expectedValue)}`);
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
 }
 
 async function triggerBackgroundRelock(page, elapsedMs = 305000) {
@@ -1308,10 +1442,12 @@ module.exports = {
   wipeAllData,
   unfoldIcs,
   captureWindowOpen,
+  withPrintStub,
   probePrintView,
   triggerBackgroundRelock,
   openGarde,
   submitGardeForm,
   openArchives,
   openAnimalFromView,
+  waitForIdbSetting,
 };

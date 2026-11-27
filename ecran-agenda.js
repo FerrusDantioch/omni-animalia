@@ -20,6 +20,8 @@ const UNITES_RECURRENCE = [
 const EcranAgenda = {
   _verrousTaches: new Map(),
   _tourRappels: 0,
+  filtreAnimalId: '',
+  _actionRapideEnCours: false,
 
   async _avecVerrouTache(id, fn) {
     const prec = this._verrousTaches.get(id) || Promise.resolve();
@@ -58,6 +60,115 @@ const EcranAgenda = {
       annees.map((an) => el('p', { class: 'ligne' }, el('span', { class: 'ligne-libelle', text: an + ' : ' }), el('span', { class: 'mono', text: UI.euros(parAn[an]) }))),
       annees.length > 1 ? el('p', { class: 'ligne' }, el('strong', { text: 'Total : ' }), el('strong', { class: 'mono', text: UI.euros(total) })) : null,
       el('p', { class: 'aide', text: 'Calculé à partir du coût noté dans chaque rendez-vous (' + avecCout.length + ' sur ' + liste.length + ').' }));
+  },
+
+  /* Bilan annuel global des dépenses vétérinaires (tous animaux confondus,
+     avec détail par animal). Inclut les animaux archivés et regroupe les
+     rendez-vous sans animal connu sous « Animal supprimé ». */
+  calculerBilanDepenses(rdvs, animaux) {
+    const listeRdvs = Array.isArray(rdvs) ? rdvs : [];
+    const listeAnimaux = Array.isArray(animaux) ? animaux : [];
+    const arrondir = (n) => Math.round(n * 100) / 100;
+    const animauxMap = new Map();
+    for (const a of listeAnimaux) {
+      if (a && typeof a.id === 'string' && a.id) animauxMap.set(a.id, a);
+    }
+
+    const avecCout = listeRdvs.filter((r) => r && typeof r.cout === 'number' && Number.isFinite(r.cout) && r.cout >= 0);
+    const parAnMap = new Map();
+    const globalAnimaux = new Map();
+    let totalGlobalBrut = 0;
+
+    const ajouterEntree = (map, animal, cout) => {
+      const cle = animal ? 'a:' + animal.id : 's';
+      let entree = map.get(cle);
+      if (!entree) {
+        entree = {
+          id: animal ? animal.id : '',
+          nom: animal ? ((typeof animal.nom === 'string' && animal.nom) || 'Animal sans nom') : 'Animal supprimé',
+          archive: Boolean(animal && animal.archive),
+          supprime: !animal,
+          total: 0,
+          nbRdv: 0
+        };
+        map.set(cle, entree);
+      }
+      entree.total += cout;
+      entree.nbRdv++;
+    };
+
+    const trierAnimaux = (map) => [...map.values()]
+      .map((e) => ({ ...e, total: arrondir(e.total) }))
+      .sort((a, b) => {
+        if (b.total !== a.total) return b.total - a.total;
+        const c = a.nom.localeCompare(b.nom, 'fr');
+        if (c !== 0) return c;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+
+    for (const r of avecCout) {
+      const annee = Dates.estValide(r.date) ? r.date.slice(0, 4) : 'Date inconnue';
+      const animal = typeof r.animalId === 'string' && r.animalId ? (animauxMap.get(r.animalId) || null) : null;
+      let blocAn = parAnMap.get(annee);
+      if (!blocAn) {
+        blocAn = { total: 0, nbRdv: 0, parAnimal: new Map() };
+        parAnMap.set(annee, blocAn);
+      }
+      blocAn.total += r.cout;
+      blocAn.nbRdv++;
+      totalGlobalBrut += r.cout;
+      ajouterEntree(blocAn.parAnimal, animal, r.cout);
+      ajouterEntree(globalAnimaux, animal, r.cout);
+    }
+
+    const clesAnnees = [...parAnMap.keys()].sort((a, b) => {
+      if (a === 'Date inconnue') return 1;
+      if (b === 'Date inconnue') return -1;
+      return a > b ? -1 : a < b ? 1 : 0;
+    });
+
+    const annees = clesAnnees.map((annee) => {
+      const bloc = parAnMap.get(annee);
+      return {
+        annee,
+        total: arrondir(bloc.total),
+        nbRdv: bloc.nbRdv,
+        parAnimal: trierAnimaux(bloc.parAnimal)
+      };
+    });
+
+    const totalGlobal = arrondir(totalGlobalBrut);
+    return {
+      annees,
+      parAnimalGlobal: trierAnimaux(globalAnimaux),
+      totalGlobal,
+      total: totalGlobal,
+      nbAvecCout: avecCout.length,
+      nbRdv: avecCout.length,
+      nbTotalRdv: listeRdvs.length
+    };
+  },
+
+  blocBilanDepenses(rdvs, animaux) {
+    const bilan = this.calculerBilanDepenses(rdvs, animaux);
+    if (!bilan.annees.length) return null;
+    return el('section', { class: 'bilan-depenses', 'aria-labelledby': 'rappels-depenses' },
+      el('h2', { id: 'rappels-depenses', text: 'Bilan annuel des dépenses' }),
+      bilan.annees.map((an) => [
+        el('h3', { class: 'sous-titre', text: an.annee }),
+        an.parAnimal.map((p) => el('p', { class: 'ligne' },
+          el('span', { class: 'ligne-libelle', text: p.nom + (p.archive ? ' (archivé)' : '') }),
+          el('span', { class: 'mono', text: UI.euros(p.total) }))),
+        el('p', { class: 'ligne ligne-total' },
+          el('span', { text: 'Total ' + an.annee }),
+          el('span', { class: 'mono', text: UI.euros(an.total) }))
+      ]),
+      bilan.annees.length > 1
+        ? el('p', { class: 'ligne ligne-total' },
+            el('span', { text: 'Total général' }),
+            el('span', { class: 'mono', text: UI.euros(bilan.totalGlobal) }))
+        : null,
+      el('p', { class: 'aide', text: 'Calculé à partir du coût noté dans chaque rendez-vous (' + bilan.nbAvecCout + ' sur ' + bilan.nbTotalRdv + ').' }));
   },
 
   /* ---------- Rendez-vous vétérinaires ---------- */
@@ -303,17 +414,52 @@ const EcranAgenda = {
     const d = await BD.toutLire();
     if (tour !== this._tourRappels || ($('#verrou') && !$('#verrou').hidden)) return;
     const frag = document.createDocumentFragment();
-    if (!d.animaux.some((a) => !a.archive)) {
+    const animaux = Array.isArray(d && d.animaux) ? d.animaux : [];
+    const traitements = Array.isArray(d && d.traitements) ? d.traitements : [];
+    const rdvs = Array.isArray(d && d.rdv) ? d.rdv : [];
+    this._vetos = Array.isArray(d && d.veterinaires) ? d.veterinaires : [];
+
+    const actifsListe = animaux
+      .filter((a) => a && !a.archive && typeof a.id === 'string' && a.id)
+      .sort((a, b) => EcranAccueil.parNom(a, b));
+    const actifs = new Map(actifsListe.map((a) => [a.id, a]));
+    if (this.filtreAnimalId && !actifs.has(this.filtreAnimalId)) {
+      this.filtreAnimalId = '';
+    }
+
+    if (!actifsListe.length) {
       frag.append(el('p', { class: 'encart vide', text: 'Aucun animal pour l’instant : aucun rappel.' }));
+      const bilan = this.blocBilanDepenses(rdvs, animaux);
+      if (bilan) frag.append(bilan);
       vider($('#rappels-liste')).append(frag);
       return;
     }
-    this._vetos = d.veterinaires;
+
+    // Filtre rapide par animal (uniquement les animaux actifs)
+    const selectFiltre = el('select', {
+      id: 'rappels-filtre-animal',
+      name: 'filtreAnimal',
+      onchange: async () => {
+        this.filtreAnimalId = selectFiltre.value;
+        await this.rafraichirRappels();
+        const sel = $('#rappels-filtre-animal');
+        if (sel) sel.focus({ preventScroll: true });
+      }
+    },
+      el('option', { value: '', text: 'Tous les animaux', selected: !this.filtreAnimalId }),
+      actifsListe.map((a) => el('option', {
+        value: a.id,
+        text: (typeof a.nom === 'string' && a.nom) || 'Animal sans nom',
+        selected: this.filtreAnimalId === a.id
+      })));
+    frag.append(el('div', { class: 'filtre-animal' },
+      el('label', { for: 'rappels-filtre-animal', text: 'Filtrer par animal' }),
+      selectFiltre));
 
     // Médicaments du jour : les traitements en cours avec « prises par jour »
     const aujourdhui = Dates.aujourdhui();
-    const actifs = new Map(d.animaux.filter((a) => !a.archive).map((a) => [a.id, a]));
-    const medicaments = d.traitements.filter((t) => t.statut !== 'termine' && t.prisesParJour && actifs.has(t.animalId) &&
+    const medicaments = traitements.filter((t) => t && t.statut !== 'termine' && t.prisesParJour && actifs.has(t.animalId) &&
+      (!this.filtreAnimalId || t.animalId === this.filtreAnimalId) &&
       (!t.debut || t.debut <= aujourdhui));
     if (medicaments.length) {
       const section = el('section', { class: 'groupe-rappels medicaments', 'aria-labelledby': 'rappels-medicaments' },
@@ -332,7 +478,8 @@ const EcranAgenda = {
     }
 
     const tous = Rappels.calculer(d);
-    const g = Rappels.grouper(tous);
+    const filtres = this.filtreAnimalId ? tous.filter((r) => r.animalId === this.filtreAnimalId) : tous;
+    const g = Rappels.grouper(filtres);
     const groupes = [
       { cle: 'retard', titre: 'En retard', classe: 'retard' },
       { cle: 'aujourdhui', titre: 'Aujourd’hui', classe: 'bientot' },
@@ -352,7 +499,7 @@ const EcranAgenda = {
     }
 
     // Tout envoyer d'un coup vers l'agenda du téléphone
-    const aVenir = tous.filter((r) => r.ecart >= 0);
+    const aVenir = filtres.filter((r) => r.ecart >= 0);
     if (aVenir.length) {
       frag.append(el('details', { class: 'filtre', id: 'agenda-tout' },
         el('summary', { text: 'Tous les rappels dans un fichier d’agenda' }),
@@ -362,6 +509,10 @@ const EcranAgenda = {
           aVenir.map((r) => Agenda.depuisRappel(r, r.type === 'rdv' ? this.lieuRappel(r, d) : '')), 'omni-animalia-rappels-' + Dates.aujourdhui()),
         { classe: 'secondaire large', icone: 'sauver', id: 'bouton-agenda-tout' })));
     }
+
+    const bilan = this.blocBilanDepenses(rdvs, animaux);
+    if (bilan) frag.append(bilan);
+
     vider($('#rappels-liste')).append(frag);
   },
 
@@ -401,7 +552,64 @@ const EcranAgenda = {
         }
       }, { classe: 'secondaire', icone: 'cloche' }));
     }
-    if (r.type === 'tache') {
+    if (r.type === 'vaccin') {
+      const btn = bouton('Noter le rappel fait', async () => {
+        if (this._actionRapideEnCours || Formulaire.courant) return;
+        this._actionRapideEnCours = true;
+        btn.disabled = true;
+        try {
+          const [animal, vaccin] = await Promise.all([
+            BD.lire('animaux', r.animalId),
+            BD.lire('vaccins', r.id)
+          ]);
+          if (!animal || animal.archive || !vaccin) {
+            UI.annoncer(!animal || animal.archive ? 'Cet animal n’est plus dans la liste.' : 'Ce vaccin n’existe plus.', 'erreur');
+            await this.rafraichirRappels();
+            return;
+          }
+          await EcranSante.formulaireVaccin(animal, null, {
+            nom: vaccin.nom || '',
+            veterinaire: vaccin.veterinaire || '',
+            date: Dates.aujourdhui()
+          });
+        } catch (e) {
+          UI.annoncer(UI.messageErreur(e), 'erreur');
+        } finally {
+          this._actionRapideEnCours = false;
+          btn.disabled = false;
+        }
+      }, { classe: 'principal', icone: 'coche' });
+      actions.prepend(btn);
+    } else if (r.type === 'antiparasitaire') {
+      const btn = bouton('Noter la prise suivante', async () => {
+        if (this._actionRapideEnCours || Formulaire.courant) return;
+        this._actionRapideEnCours = true;
+        btn.disabled = true;
+        try {
+          const [animal, ap] = await Promise.all([
+            BD.lire('animaux', r.animalId),
+            BD.lire('antiparasitaires', r.id)
+          ]);
+          if (!animal || animal.archive || !ap) {
+            UI.annoncer(!animal || animal.archive ? 'Cet animal n’est plus dans la liste.' : 'Cette prise n’existe plus.', 'erreur');
+            await this.rafraichirRappels();
+            return;
+          }
+          EcranSante.formulaireAP({ ...animal, nom: animal.nom || '' }, null, {
+            type: ap.type,
+            produit: ap.produit || '',
+            dose: ap.dose || '',
+            date: Dates.aujourdhui()
+          });
+        } catch (e) {
+          UI.annoncer(UI.messageErreur(e), 'erreur');
+        } finally {
+          this._actionRapideEnCours = false;
+          btn.disabled = false;
+        }
+      }, { classe: 'principal', icone: 'coche' });
+      actions.prepend(btn);
+    } else if (r.type === 'tache') {
       actions.prepend(bouton('Marquer comme fait', async () => {
         try {
           const t = await BD.lire('taches', r.id);
